@@ -5,6 +5,7 @@
 !*.mk
 !*.[cSh]
 !*.v
+!*.scala
 !*.cc
 !*.cpp
 !.gitignore
