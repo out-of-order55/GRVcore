@@ -1,0 +1,61 @@
+# -*- Makefile -*-
+#######################################################################
+#
+# DESCRIPTION: Verilator Example: Makefile for inside object directory
+#
+# This is executed in the object directory, and called by ../Makefile
+#
+# This file ONLY is placed under the Creative Commons Public Domain, for
+# any use, without warranty, 2020 by Wilson Snyder.
+# SPDX-License-Identifier: CC0-1.0
+#
+#######################################################################
+NAME= ?
+default: $(NAME)
+
+# Include the rules made by Verilator
+include $(NAME).mk
+include $(NVBOARD_HOME)/scripts/nvboard.mk
+# Use OBJCACHE (ccache) if using gmake and its installed
+COMPILE.cc = $(OBJCACHE) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c
+FILELIST_MK = $(shell find -L ../csrc -name "filelist.mk")
+include $(FILELIST_MK)
+#######################################################################
+# Compile flags
+WORK_DIR  = $(dir $(CURDIR))
+
+# Turn on creating .d make dependency files
+INC_PATH := $(WORK_DIR)/include $(NVBOARD_INC)
+INCLUDES = $(addprefix -I, $(INC_PATH)  )
+# Turn on creating .d make dependency files
+CPPFLAGS += -MMD -MP  
+CPPFLAGS += $(INCLUDES) 
+CPPFLAGS += -DVL_DEBUG=1
+
+LDLIBS +=-lreadline -lSDL2 -lSDL2_image -lSDL2_ttf
+LOADLIBES += $(NVBOARD_ARCHIVE)
+# Turn on some more compiler lint flags (when configured appropriately)
+# For testing inside Verilator, "configure --enable-ccwarn" will do this
+# automatically; otherwise you may want this unconditionally enabled
+ifeq ($(CFG_WITH_CCWARN),yes)  # Local... Else don't burden users
+USER_CPPFLAGS_WALL += -W -Werror -Wall
+endif
+
+# See the benchmarking section of bin/verilator.
+# Support class optimizations.  This includes the tracing and symbol table.
+# SystemC takes minutes to optimize, thus it is off by default.
+OPT_SLOW =
+
+# Fast path optimizations.  Most time is spent in these classes.
+OPT_FAST = -Os -fstrict-aliasing
+#OPT_FAST = -O
+#OPT_FAST =
+
+######################################################################
+######################################################################
+# Automatically understand dependencies
+
+DEPS := $(wildcard *.d)
+ifneq ($(DEPS),)
+include $(DEPS)
+endif

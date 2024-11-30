@@ -2,6 +2,8 @@
 *
 !*/
 !Makefile
+!Makefile_obj
+!build.sc
 !*.mk
 !*.[cSh]
 !*.v
