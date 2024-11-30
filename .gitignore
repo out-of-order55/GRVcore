@@ -15,4 +15,5 @@
 !README.md
 build/
 obj_dir/
+out/
 
