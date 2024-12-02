@@ -18,5 +18,4 @@
 CXXFLAGS += $(shell llvm-config --cxxflags) -fPIE
 LIBS += $(shell llvm-config --libs)
 $(info CONFIG_ITRACE and/or CONFIG_IQUEUE are defined!)
-$(echo $(VERILATOR_INPUT))
 #endif

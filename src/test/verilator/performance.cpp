@@ -1,8 +1,7 @@
 #include <GlobalVarible.h>
 #include <init.h>
-
+//#include <common.h>
 #include <performance.h>
-
     uint32_t  branch_c,pred_succ_c;
     uint32_t  ifu_finish;
     uint32_t  load_num,store_num,bjp_num,csr_num,normal_num,mem_num; 
@@ -15,11 +14,9 @@
         branch_c = branch_cnt;
         pred_succ_c=pred_succ_cnt;
     }
-    
     void ifu(int ifu_cnt){
         ifu_finish = ifu_cnt;
     }
-    
     void idu(int load_cnt,int store_cnt,int bjp_cnt,int csr_cnt,int normal_cnt,int mem_cnt){
         load_num   = load_cnt;  
         store_num  = store_cnt;

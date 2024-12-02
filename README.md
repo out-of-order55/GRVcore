@@ -1,3 +1,17 @@
+# Structure
+
+GRVCore
+├── build
+├── include
+├── src
+│   ├── main
+│   ├── test
+│   │   ├── vcs
+│   │   └── verilator
+│   └── vsrc
+└── vsrc
+    └── vcs
+
 # TODO
 
 * [X] refactor code and Makefile

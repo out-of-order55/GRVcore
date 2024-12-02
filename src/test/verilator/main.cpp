@@ -1,3 +1,4 @@
+
 // #include <Vtop__Dpi.h>
 #include <init.h>//must first write it
 #include <GlobalVarible.h>
@@ -7,7 +8,7 @@ void test_f();
 uint32_t last_inst;
 
 int main(int argc, char** argv) {
-Verilated::commandArgs(argc, argv);
-test_f();
+  Verilated::commandArgs(argc, argv);
+  test_f();
 
 }

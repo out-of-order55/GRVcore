@@ -1,5 +1,4 @@
 #include <GlobalVarible.h>
-// #include <Vtop__Dpi.h>
 bool  timer_addr=false;
 bool  diff_amend=false;
 

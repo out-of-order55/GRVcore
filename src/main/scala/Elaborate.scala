@@ -1,11 +1,14 @@
+// package  top
 import Cache._
 import ysyx._
 import chisel3._
+// import difftest._
 
-import freechips.rocketchip.diplomacy._
-// import freechips.rocketchip.util._
-import org.chipsalliance.cde.config.Parameters
+
+import circt.stage._
 object Elaborate extends App {
+  
+  println("-----------------Generate Verilog--------------------")
   val config = grvcoreConfig()
   val firtoolOptions = Array("--lowering-options=" + List(
     // make yosys happy
@@ -14,7 +17,8 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
   ).reduce(_ + "," + _))
-  val add = LazyModule(new AdderTestHarness()(Parameters.empty))
-  circt.stage.ChiselStage.emitSystemVerilogFile( new top, args, firtoolOptions)
+  // val add = LazyModule(new AdderTestHarness()(Parameters.empty))
+  circt.stage.ChiselStage.emitSystemVerilogFile( new SimTop, args, firtoolOptions)
+  // DifftestModule.finish("Demo", false)
 
 }

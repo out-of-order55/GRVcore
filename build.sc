@@ -1,13 +1,16 @@
 
 import mill._
 import scalalib._
+import scalafmt._
 import $file.`rocket-chip`.dependencies.hardfloat.common
 import $file.`rocket-chip`.dependencies.cde.common
 import $file.`rocket-chip`.dependencies.diplomacy.common
 import $file.`rocket-chip`.common
 
-val chiselVersion = "6.4.0"
-val defaultScalaVersion = "2.13.10"
+
+val chiselVersion = "6.6.0"
+val defaultScalaVersion = "2.13.15"
+val pwd = os.Path(sys.env("MILL_WORKSPACE_ROOT"))
 
 object v {
   def chiselIvy: Option[Dep] = Some(ivy"org.chipsalliance::chisel:${chiselVersion}")
@@ -28,9 +31,9 @@ trait HasThisChisel extends SbtModule {
 }
 
 object rocketchip extends RocketChip
-trait RocketChip extends millbuild.`rocket-chip`.common.RocketChipModule with HasThisChisel {
+trait RocketChip extends $file.`rocket-chip`.common.RocketChipModule with HasThisChisel {
   def scalaVersion: T[String] = T(defaultScalaVersion)
-  override def millSourcePath = os.pwd / "rocket-chip"
+  override def millSourcePath = pwd / "rocket-chip"
   def dependencyPath = millSourcePath / "dependencies"
   def macrosModule = macros
   def hardfloatModule = hardfloat
@@ -41,25 +44,25 @@ trait RocketChip extends millbuild.`rocket-chip`.common.RocketChipModule with Ha
   def json4sJacksonIvy = ivy"org.json4s::json4s-jackson:4.0.6"
 
   object macros extends Macros
-  trait Macros extends millbuild.`rocket-chip`.common.MacrosModule with SbtModule {
+  trait Macros extends $file.`rocket-chip`.common.MacrosModule with SbtModule {
     def scalaVersion: T[String] = T(defaultScalaVersion)
     def scalaReflectIvy = ivy"org.scala-lang:scala-reflect:${defaultScalaVersion}"
   }
 
   object hardfloat extends Hardfloat
-  trait Hardfloat extends millbuild.`rocket-chip`.dependencies.hardfloat.common.HardfloatModule with HasThisChisel {
+  trait Hardfloat extends $file.`rocket-chip`.dependencies.hardfloat.common.HardfloatModule with HasThisChisel {
     def scalaVersion: T[String] = T(defaultScalaVersion)
     override def millSourcePath = dependencyPath / "hardfloat" / "hardfloat"
   }
 
   object cde extends CDE
-  trait CDE extends millbuild.`rocket-chip`.dependencies.cde.common.CDEModule with ScalaModule {
+  trait CDE extends $file.`rocket-chip`.dependencies.cde.common.CDEModule with ScalaModule {
     def scalaVersion: T[String] = T(defaultScalaVersion)
     override def millSourcePath = dependencyPath / "cde" / "cde"
   }
 
   object diplomacy extends Diplomacy
-  trait Diplomacy extends millbuild.`rocket-chip`.dependencies.diplomacy.common.DiplomacyModule {
+  trait Diplomacy extends $file.`rocket-chip`.dependencies.diplomacy.common.DiplomacyModule {
     def scalaVersion: T[String] = T(defaultScalaVersion)
     override def millSourcePath = dependencyPath / "diplomacy" / "diplomacy"
 
@@ -76,18 +79,22 @@ trait RocketChip extends millbuild.`rocket-chip`.common.RocketChipModule with Ha
 trait mymodule extends ScalaModule {
   def rocketModule: ScalaModule
   override def moduleDeps = super.moduleDeps ++ Seq(
-    rocketModule,
+    rocketModule
   )
 }
 
-object playground extends mycore{
 
 
-}
-trait mycore extends mymodule with HasThisChisel {
-  override def millSourcePath = os.pwd
+
+
+
+trait mycore extends mymodule with HasThisChisel  {
+  override def millSourcePath = pwd
   def rocketModule = rocketchip
   override def sources = T.sources {
-    super.sources() ++ Seq(PathRef(millSourcePath / "src"))
+    super.sources() ++ Seq(PathRef(millSourcePath /"src"))
   }
+}
+object playground extends mycore with ScalafmtModule {
+  
 }

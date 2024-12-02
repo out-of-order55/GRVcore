@@ -66,11 +66,11 @@ VERILATOR_FLAGS += -Wno-SYNCASYNCNET
 VERILATOR_FLAGS += +incdir+$(WORK_DIR)/vsrc 
 # VERILATOR_FLAGS += +incdir+$(YSYXSOC)/perip/spi/rtl 
 # Input files for Verilator
-VSRCS = $(shell find $(abspath ./vsrc) -name "*.sv" -or -name "*.v") 
+# VSRCS = $(shell find $(abspath ./vsrc) -maxdepth 1 -name "*.sv" -or -name "*.v") 
 # $(shell find $(YSYXSOC)/perip -name "*.v") $(YSYXSOC)/build/ysyxSoCFull.v 
 # CSRCS = $(shell find $(abspath ./csrc) -name "*.c"  -or -name "*.cpp")
 
-VERILATOR_INPUT = $(VSRCS) $(shell find $(abspath $(WORK_DIR)/csrc/verilator) -name "*.c"  -or -name "*.cpp")
+VERILATOR_INPUT = $(GenerateV) $(shell find $(abspath $(WORK_DIR)/src/test/verilator) -name "*.c"  -or -name "*.cpp")
 
 ################################################################
 #############################   VCS  ###########################
@@ -79,6 +79,7 @@ VERILATOR_INPUT = $(VSRCS) $(shell find $(abspath $(WORK_DIR)/csrc/verilator) -n
 
 
 include difftest.mk
+# include $(WORK_DIR)/src/test/verilator/filelist.mk
 IMG?=
 override ARGS ?= --log=$(BUILD_DIR)/npc-log.txt
 override ARGS += $(ARGS_DIFF)
@@ -86,24 +87,46 @@ override ARGS += -b
 BINARY   = $(BUILD_DIR)/$(NAME)
 # Compile in Verilator runtime debugging, so +verilator+debug works
 ######################################################################
-VERILOG_FILE = $(WORK_DIR)/build
-GenerateV ?=$(shell find $(abspath $(VERILOG_FILE)) -name "*.sv")
+VERILOG_FILE ?= $(WORK_DIR)/build
+GenerateV ?=$(shell find $(abspath $(VERILOG_FILE))   -name "*.sv")
+
+
 PRJ = playground
-VERSION = --mill-version 0.11.10
+
+
+NOOP_HOME  ?= $(WORK_DIR)/difftest
+export NOOP_HOME
+
+
+emu: verilog
+	@echo "------------------DiffTest------------------------"
+	@$(MAKE) -C difftest emu DESIGN_DIR=$(WORK_DIR)  WITH_CHISELDB=0 WITH_CONSTANTIN=0  NUM_CORES=1
+
+sim-verilog:
+	test -d $(VERILOG_FILE)/rtl||
+	cp $(GenerateV) $(VERILOG_FILE)/rtl
+clean_v:
+	@rm -rf $(VSRCS)
 verilog:
 	@echo "---------------- GENERATE VERILOG ----------------"
-	mkdir -p $(VERILOG_FILE)
-	mill $(VERSION) -i  $(PRJ).runMain Elaborate --target-dir $(VERILOG_FILE)
-	@echo $(GenerateV) $(WORK_DIR)/vsrc
-	@if [ -n "$(GenerateV)" ]; then \
-		echo "Copying $(GenerateV) to $(WORK_DIR)/vsrc"; \
-		cp $(GenerateV) $(WORK_DIR)/vsrc; \
-	fi
-	@rm -r $(VERILOG_FILE)
+	
+# @mkdir -p $(VERILOG_FILE)&&cd $(VERILOG_FILE) &&mkdir -p  rtl
+	mill  -i  $(PRJ).runMain Elaborate  --target-dir $(VERILOG_FILE)
+# @echo $(GenerateV) $(WORK_DIR)/vsrc
+# @if [ -n "$(GenerateV)" ]; then \
+# 	echo "Copying $(GenerateV) to $(WORK_DIR)/vsrc"; \
+# 	cp -f $(GenerateV) $(WORK_DIR)/vsrc; \
+# fi
+# @rm -r $(VERILOG_FILE)
+
+debug :
+	@echo "---------------- GENERATE VERILOG ----------------"
+	@mkdir -p $(VERILOG_FILE)
+	mill  -i -d $(PRJ).runMain Elaborate --target-dir $(VERILOG_FILE)
 # @rm  -r $(VERILOG_FILE)
 test:
 	@echo "-------------------- UNIT TEST----------------"
-	@echo $(VSRCS)
+	@echo $(GenerateV)
 
 sim: verilog
 	@echo "----------------- VERILATE ----------------"
@@ -117,10 +140,32 @@ run:sim
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
 
+
+###############################VCS############################
+VCS_CSRC ?=	 $(WORK_DIR)/src/test/vcs/top.c
+VCS_VSRC ?=  $(WORK_DIR)/src/test/vcs/tb_top.v $(GenerateV)
+
+vcs   :verilog
+	@echo "--------------------- VCS -------------------"
+# echo $(VCS_VSRC)
+	@echo $(VCS_VSRC) > filelist.f
+	vcs   -LDFLAGS -Wl,--no-as-needed\
+				-f filelist.f  \
+				-timescale=1ns/1ps \
+				-fsdb  -full64  -R  +vc  +v2k  -sverilog  -debug_all  \
+				-P ${LD_LIBRARY_PATH}/novas.tab  ${LD_LIBRARY_PATH}/pli.a  \
+				$(VCS_CSRC)\
+				|  tee  vcs.log  &
+# @rm -rf filelist.f
+#-------------------------------------------------------------------------------------------------------
+verdi  :
+	@echo "-------------------- VERDI -------------------"
+	verdi -f filelist.f -ssf tb.fsdb &
+###############################################################
 show-config:
 	$(VERILATOR) -V
 perf:
 	cd $(YSYX_HOME)/am-kernels/benchmarks/microbench && make ARCH=riscv32e-ysyx_soc mainargs=train run
 clean:
-	rm -rf ./obj_dir 
+	rm -rf  ./build ./obj_dir *~  core  csrc  simv*  vc_hdrs.h  ucli.key  urg* *.log  novas.* *.fsdb* verdiLog  64* DVEfiles *.vpd
 

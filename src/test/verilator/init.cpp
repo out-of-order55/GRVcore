@@ -344,7 +344,7 @@ void test_f(){
   RESET(12);
   for(int i=0;i<36;i++){
     CLOCK();
-    top->io_in +=1;
+    // top->io_in +=1;
   }
   #ifdef  CONFIG_WAVE_TRECE
   tfp->close();

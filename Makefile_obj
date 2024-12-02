@@ -18,7 +18,7 @@ include $(NAME).mk
 include $(NVBOARD_HOME)/scripts/nvboard.mk
 # Use OBJCACHE (ccache) if using gmake and its installed
 COMPILE.cc = $(OBJCACHE) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c
-FILELIST_MK = $(shell find -L ../csrc -name "filelist.mk")
+FILELIST_MK = $(shell find -L ../src/test/verilator -name "filelist.mk")
 include $(FILELIST_MK)
 #######################################################################
 # Compile flags
