@@ -3,6 +3,7 @@ package ysyx
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.util._
+import org.chipsalliance.cde.config._
 // import difftest._
 // import org.chipsalliance.cde.config.Parameters
 // import freechips.rocketchip.system.DefaultConfig
@@ -40,54 +41,55 @@ class ghist extends Bundle{
 //     // }
 //     // io.out := data
 // }
+
+case object Key extends Field[BaseParams]
+trait BaseParams{
+    val p1:Params1
+    val p2:Params2
+}
+trait NoneParams {
+    implicit val p: Parameters
+    def baseparm = p(Key)
+}
+trait Params1 {
+    val a: Boolean
+    val b: Boolean
+}
+trait HasParams1 extends NoneParams{
+    val p1 :Params1 = baseparm.p1
+    val a = p1.a
+    val b = p1.b
+}
+trait HasParams2 extends NoneParams{
+    val p2 :Params2 = baseparm.p2
+    val c = p2.c
+    val d = p2.d
+}
+trait Params2 {
+    val c: Boolean
+    val d: Boolean
+}
+class DefaultConfig extends Config((site, here, up) => {
+  case Key => new BaseParams {
+    // 在这里定义 p1 和 p2 的具体实现
+    val p1 = new Params1 {
+      val a = true  // 或者根据实际需要设定
+      val b = false
+    }
+
+    val p2 = new Params2 {
+      val c = true
+      val d = false
+    }
+  }
+})
+
 class test extends  BlackBox {
     val io = IO(new Bundle {
         val cnt    = Input(UInt(32.W))
     })
 }
-class SimTop extends Module with  DontTouch{
-    val io = IO(new Bundle { })
-    val m = Module(new top)
-    m.dontTouchPorts()
-    val zeroVec = RegInit(VecInit(Seq.fill(4)(0.U(32.W))))
-    val n = zeroVec.map(b=> b+1.U)
-    zeroVec := n
-    m.io.in :=0.U
-    m.io.in1 := n
-    m.io.out :=DontCare
-    m.io.out1 := DontCare
 
-    
-    // val difftest = DifftestModule.finish("Demo")
-    // val difftest = DifftestModule(new DiffInstrCommit,delay = 1, dontCare = true)
-    // // difftest.valid  := 0.U
-    // // difftest.pc     := 0.U
-    // // difftest.instr  := 0.U
-    // // difftest.skip   := 0.U
-    // // difftest.isRVC  := 0.U
-    // // difftest.rfwen  := 0.U
-    // // difftest.wdest  := 0.U
-    // // difftest.wpdest := 0.U
-    // difftest.skip   :=0.U
-    // difftest.isRVC  :=0.U
-    // difftest.rfwen  :=0.U
-    // difftest.fpwen  :=0.U
-    // difftest.vecwen :=0.U
-    // difftest.wpdest :=0.U
-    // difftest.wdest  :=0.U
-    // difftest.pc     :=0.U
-    // difftest.instr  :=0.U
-    // difftest.robIdx :=0.U
-    // difftest.lqIdx  :=0.U
-    // difftest.sqIdx  :=0.U
-    // difftest.isLoad :=0.U
-    // difftest.isStore:=0.U
-    // difftest.nFused :=0.U
-    // difftest.special:=0.U
-    // difftest.valid := 0.U
-    // difftest.coreid := 0.U
-    // difftest.index := 0.U
-}
 class top extends Module with  DontTouch {
     val io = IO(new Bundle{
         val in = Input(UInt(32.W))

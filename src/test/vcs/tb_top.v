@@ -16,7 +16,7 @@ initial begin
     $finish;
 end
 
-always #(10) clock = ~clock;
+always #(1) clock = ~clock;
 
 initial	begin
 	    $fsdbDumpfile("tb.fsdb");
