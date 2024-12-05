@@ -1,9 +1,10 @@
 package grvcore
 import chisel3._
 import chisel3.util._
-// import scala.util.matching.Regex
+
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
+
 ///////////////////////////Parameters//////////////////////
 import org.chipsalliance.cde.config._
 case object ICacheKey extends Field[ICacheParams]
@@ -91,13 +92,14 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	val refillData    = IO(Output(Vec(numReadport,Vec(bankNum,UInt(XLEN.W)))))
 	val finish        = IO(Output(Bool()))
 	val imaster   	  = IO(AXI4Bundle(CPUAXI4BundleParameters()))
-
+	val refillMask    = IO(Output(UInt(numReadport.W)))
 	val miss = missmsg0.miss|missmsg1.miss
 	//normal->no miss req->has miss  wait_ack->wait data end->receive data
 	val s_reset :: s_normal::s_req :: s_wait_ack :: s_end :: Nil = Enum(5)
 	val state = RegNext(s_reset)
 	val state_n = WireInit(state)
 	val s_refillData = Reg(Vec(numReadport,Vec(bankNum,UInt(XLEN.W))))
+	val s_refillMask	 = RegInit(0.U(numReadport.W))
 ////////////////////////AXI//////////////////////////
 	val ar_fire = imaster.ar.fire
 	val r_fire 	= imaster.r.fire
@@ -133,7 +135,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 		s1_missMsg1  := missmsg1
 		rcnt := 0.U
 		arvalid := true.B
-
+		s_refillMask := Cat(missmsg1.miss,missmsg0.miss).asUInt
 	}.elsewhen(ar_fire){
 		arvalid := false.B
 		rready := true.B
@@ -142,7 +144,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	}
 
 	when(state===s_wait_ack&imaster.r.fire){
-		s_refillData(rcnt/(blockBytes.U))(rcnt%(blockBytes.U)) := r.data
+		s_refillData((rcnt/(blockBytes.U))(log2Ceil(numReadport)-1,0))(rcnt%(blockBytes.U)(log2Ceil(bankNum)-1,0)) := r.data
 		rcnt := rcnt + 1.U
 	}
 
@@ -153,6 +155,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	}
 	refillData := s_refillData
 	finish := end
+	refillMask := s_refillMask
 /////////////////////////////////////////////////////
 	state := state_n
 
@@ -198,14 +201,25 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val readport = Seq.fill(numReadport)(IO(new CacheReadIO()))
 	val res_data  = IO(Output(Vec((bankNum),UInt(XLEN.W))))
 	val finish    = IO(Output(Bool()))
-	// val imaster   = IO(AXI4Bundle(CPUAXI4BundleParameters()))
+	val imaster   = IO(AXI4Bundle(CPUAXI4BundleParameters()))
 	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new DataRAM())))
 	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new TagRAM())))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
 	
 
-//random replacement
 	val rp = RegInit(false.B)
 	rp := (!rp) 
+
+	val missunit   = Module(new MissUnit())
+//////////////////////REFILL SIGNAL/////////////////////////////
+	val refill_end = WireInit(missunit.finish)
+	// val refillData = Wire(Vec(numReadport,Vec(bankNum,UInt(XLEN.W))))
+	val refillData = WireInit(missunit.refillData) 
+	val refillWay  = Wire(UInt(log2Ceil(nWays).W))// DETECT IF MISS WAY = REFILL_WAY
+	val refillMask = WireInit(missunit.refillMask)
+////////////////////////////////////////////////////////////////
+	
+//random replacement
+
 
 	require(nWays==2,"Now Only Support 2 ways assoc")
 	require(numReadport==2,"Now Only Support 2 ports")
@@ -220,41 +234,15 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	rmask(0) := MaskUpper(UIntToOH(port(0).bank))
 	rmask(1) := !rmask(0)
 
-	val rtagv     = Wire(Vec(nWays,Vec(numReadport,UInt(XLEN.W))))//numReadport -> cache line 
+	val rtagv     = Wire(Vec(nWays,Vec(numReadport,UInt(tagWidth.W))))//numReadport -> cache line 
 
 // access tag
-	(0 until tag.length).map{i=>
-		(0 until tag.head.length).map{j=>
-			tag(i)(j).io.enable := port(j).ren
-			tag(i)(j).io.addr   := port(j).index
-			tag(i)(j).io.write  := false.B
-			tag(i)(j).io.dataIn := 0.U
-			rtagv(i)(j) := tag(i)(j).io.dataOut 
-		}
-	}
+
+
+
 //access data
   //each port need connect both dataram , no bank conflict
-    (0 until data.length).map{j=>
-		(0 until data.head.length).map{k=>
-			when(rmask(0)(k)===1.U){
-				data(j)(k).io.enable := port(0).ren
-				data(j)(k).io.addr   := port(0).index
-				data(j)(k).io.write  := false.B
-				data(j)(k).io.dataIn := 0.U
-				rdata(0)(j)(k)       := data(j)(k).io.dataOut
-				rdata(1)(j)(k) 		 := DontCare		
-        	}.otherwise{
-				data(j)(k).io.enable := port(1).ren
-				data(j)(k).io.addr   := port(1).index
-				data(j)(k).io.write  := false.B
-				data(j)(k).io.dataIn := 0.U
-				rdata(0)(j)(k)       := DontCare
-				rdata(1)(j)(k) 		 := data(j)(k).io.dataOut
-        	}
-        
-    	}
-    }
-	dontTouch(rdata)
+
 
 //reg1
 	val port_r1     = RegNext(port)
@@ -263,43 +251,58 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 
   //if 2 way ,need judge most 4 cacheline 
   //(nWays)(numPort)
-	val hitLine  = rtagv.map{i=>
-		(i zip port_r1).map{ case(r,l)=>
+	val hitLine  = VecInit(rtagv.map{i=>
+		VecInit((i zip port_r1).map{ case(r,l)=>
 			r===l.tag
-		}
-	}
-	val hitWay    = (hitLine.map{
-		h => h.reduce(_&_)
+		})
 	})
-	val hit       = hitWay.reduce(_|_)
+	val t_hitLine = Transpose(hitLine)
 
+	val hitWay   = WireInit(Mux(t_hitLine(0).reduce(_|_),OHToUInt(t_hitLine(0).asUInt),OHToUInt(t_hitLine(1).asUInt))) 
+	val hit       = t_hitLine(0).reduce(_|_)&t_hitLine(1).reduce(_|_)
 
 	val bankoff   = port_r1(0).bank
 	val bankmask  = rmask_r1(0)
 
 
 	val wayData  = Wire(Vec(nWays,Vec(bankNum,UInt(XLEN.W))))
+	//get data table
+	val t_wayData = Transpose(wayData)
+	val hitData  = Wire(Vec(bankNum,UInt(XLEN.W)))
+	val dataMask = Wire(Vec(bankNum,Bool()))//which data is hit
 	dontTouch(wayData)
-	val hitData  = Mux1H(hitWay zip wayData)
+	// get sel signal(way) for each bank
+	for(i <- 0 until bankNum){
+		val dataSel = Mux(bankmask(i)===1.U,t_hitLine(0),t_hitLine(1))
+		hitData(i) := Mux1H(dataSel zip t_wayData(i))
+		when(dataSel.reduce(_|_)){
+			dataMask(i) := true.B
+		}.otherwise{
+			dataMask(i)	:= false.B
+		}
+	}
+	
 
-	val miss_addr0 = Wire(UInt(XLEN.W))
-	val miss_addr1 = Wire(UInt(XLEN.W))
-	miss_addr0 := Cat(port_r1(0).tag,(port_r1(0).index))<<offsetWidth
-	miss_addr1 := Cat(port_r1(1).tag,(port_r1(1).index))<<offsetWidth
 
-
-val shiftArr = Wire(Vec(nWays,Vec(bankNum,Vec(bankNum,UInt(XLEN.W)))))
+	val missMsg0 = Wire(new MissMsg())
+	val missMsg1 = Wire(new MissMsg())
+	missMsg0.addr := Cat(port_r1(0).tag,(port_r1(0).index))<<offsetWidth
+	missMsg1.addr := Cat(port_r1(1).tag,(port_r1(1).index))<<offsetWidth
+	missMsg0.miss := !t_hitLine(0).reduce(_|_)
+	missMsg1.miss := !t_hitLine(1).reduce(_|_)	
+	
+	val shiftArr = Wire(Vec(nWays,Vec(bankNum,Vec(bankNum,UInt(XLEN.W)))))
 
 //transpose arr to fit Mux1H
-for (i <- 0 until nWays) {
-	val newarr = (0 until bankNum).map { j =>
-		val shift = ((0 until bankNum).map { k =>
-			if (j + k < bankNum) (rdata(0)(i)(j + k)) else (rdata(1)(i)((j + k) % bankNum))
-		})
-		VecInit(shift)
+	for (i <- 0 until nWays) {
+		val newarr = (0 until bankNum).map { j =>
+			val shift = ((0 until bankNum).map { k =>
+				if (j + k < bankNum) (rdata(0)(i)(j + k)) else (rdata(1)(i)((j + k) % bankNum))
+			})
+			VecInit(shift)
+		}
+		shiftArr(i) := Transpose((VecInit(newarr)))
 	}
-	shiftArr(i) := Transpose((VecInit(newarr)))
-}
 
 	for(i<- 0 until nWays){
 		for(j<- 0 until bankNum){
@@ -307,18 +310,105 @@ for (i <- 0 until nWays) {
 		}
 	}
 
-//reg2
+//////////////////////pipe2////////////////////
 	val hit_r2       = RegNext(hit)
 	val hit_data_r2  = RegNext(hitData)
-	val miss_addr0_r2 = RegNext(miss_addr0)
-	val miss_addr1_r2 = RegNext(miss_addr1)
+	val missMsg0_r2  = RegInit(missMsg0)
+	val missMsg1_r2  = RegInit(missMsg1)
+	val hitWay_r2    = Reg(UInt(log2Ceil(nWays).W))
+	val hitData_r2	 = Reg(Vec(bankNum,UInt(XLEN.W)))
+	val dataMask_r2  = Reg(Vec(bankNum,Bool()))
+	val bankMask_r2	 = Reg(UInt(bankNum.W))
+	when(refill_end){
+		missMsg0_r2.miss := false.B
+		missMsg1_r2.miss := false.B
+	}.elsewhen(missMsg0.miss|missMsg1.miss){
+		missMsg0_r2 := missMsg0
+		missMsg1_r2 := missMsg1
+	}
+	// if port0 or port1 miss save data partial data miss
+	when(missMsg0.miss^missMsg1.miss){
+		hitData_r2 := hitData
+		dataMask_r2 := dataMask
+		bankMask_r2 := bankmask
+		hitWay_r2	:= hitWay
+	}
 
   //both 0 and 1 need to be hit or into missunit
-//pipe3
+///////////////////////////pipe3///////////////////////
   //if hit 
   // val defd =VecInit(bankNum,(0.U(XLEN.W)))
-	res_data:=Mux(hit_r2,hit_data_r2,wayData(0))
-	finish := Mux(hit_r2,true.B,false.B)
-  // if miss
-  // val missunit = Module(new MissUnit(addrWidth,dataWidth,parameter))
+///////////////////////////MISS HANDLE/////////////////////////////
+	val finalData = Wire(Vec(bankNum,UInt(XLEN.W)))
+	val finalArr = Wire(Vec(bankNum,Vec(bankNum,UInt(XLEN.W))))
+	val newarr = (0 until bankNum).map { j =>
+		val shift = ((0 until bankNum).map { k =>
+			if (j + k < bankNum) (refillData(0)(j + k)) else (refillData(1)((j + k) % bankNum))
+		})
+		VecInit(shift)
+	}
+	finalArr := Transpose((VecInit(newarr)))
+	for(i <- 0 until bankNum){
+		finalData(i) := Mux(dataMask_r2(i),hitData_r2(i),Mux1H(UIntToOH(bankoff),finalArr(i)))
+	}
+
+
+	val refill_tag = Wire(Vec(numReadport,UInt(tagWidth.W)))
+	val refill_idx = Wire(Vec(numReadport,UInt(tagWidth.W)))
+	refill_tag(0)	:= Mux(missMsg0_r2.miss,missMsg0_r2.addr>>(offsetWidth+indexWidth),
+					missMsg1_r2.addr>>(offsetWidth+indexWidth))			
+	refill_tag(1)	:= missMsg1_r2.addr>>(offsetWidth+indexWidth)	
+
+	refill_idx(0)	:= Mux(missMsg0_r2.miss,missMsg0_r2.addr((indexWidth+offsetWidth)-1,offsetWidth),
+					missMsg1_r2.addr((indexWidth+offsetWidth)-1,offsetWidth))
+	refill_idx(1)	:= missMsg1_r2.addr((indexWidth+offsetWidth)-1,offsetWidth)
+	refillWay := rp
+
+	missunit.missmsg0 := missMsg0_r2
+	missunit.missmsg1 := missMsg1_r2
+	missunit.imaster  <> imaster
+/////////////////////////////OUTPUT////////////////////////////////
+	val data_ok = RegNext(refill_end)
+	val finalData_s1 = RegNext(finalData)
+	finish := Mux(hit_r2,true.B,
+				Mux(data_ok,true.B,false.B))
+	res_data:=Mux(hit_r2,hit_data_r2,
+				Mux(data_ok,finalData_s1,
+				VecInit(Seq.fill(bankNum)(0.U(XLEN.W)))))
+///////////////////////////////////////////////////////////////////
+//////////////////////////Tag RAM//////////////////////////////////
+	for( i <- 0 until tag.length){
+		for(j  <- 0 until tag.head.length){
+			tag(i)(j).io.enable := Mux((i.U===refillWay||i.U===((refillWay+1.U)%nWays.U))&refill_end&(refillMask.xorR===false.B),true.B,
+									Mux((i.U===refillWay)&(refill_end)&(refillMask.xorR===true.B),true.B,
+									Mux(port(j).ren,true.B,false.B)))
+			tag(i)(j).io.addr   := Mux(refill_end,Mux(i.U===refillWay,refill_idx(0),refill_idx(1)),port(j).index)
+			tag(i)(j).io.write  :=  Mux((i.U===refillWay||i.U===((refillWay+1.U)%nWays.U))&(refill_end)&(refillMask.xorR===false.B),true.B,
+									Mux((i.U===refillWay)&(refill_end)&(refillMask.xorR===true.B),true.B,false.B))
+			tag(i)(j).io.dataIn := Mux((i.U===refillWay)&(refill_end),refill_tag(0),refill_tag(1)) 
+			rtagv(i)(j) := tag(i)(j).io.dataOut
+		}
+	}
+////////////////////////////////DATA RAM////////////////////////////
+	for( i <- 0 until data.length){
+		for(j  <- 0 until data.head.length){
+			data(i)(j).io.enable := Mux((i.U===refillWay||i.U===((refillWay+1.U)%nWays.U))&(refill_end)&(refillMask.xorR===false.B),true.B,
+									Mux((i.U===refillWay)&(refill_end)&(refillMask.xorR===true.B),true.B,
+									Mux(rmask(0)(j)===1.U,port(0).ren,
+									port(1).ren)))
+
+			data(i)(j).io.addr   := Mux(refill_end,Mux(i.U===refillWay,refill_idx(0),refill_idx(1)),
+									Mux(rmask(0)(j)===1.U,port(0).index,
+									port(1).index))
+
+			data(i)(j).io.write  := Mux((i.U===refillWay||i.U===((refillWay+1.U)%nWays.U))&(refill_end)&(refillMask.xorR===false.B),true.B,
+									Mux((i.U===refillWay)&(refill_end)&(refillMask.xorR===true.B),true.B,false.B))
+			data(i)(j).io.dataIn := Mux(refill_end,Mux(i.U===refillWay,refillData(0)(j),refillData(1)(j)),0.U)//refillData(0) must be the first miss data
+
+			rdata(0)(i)(j)       := Mux(rmask(0)(j)===1.U,data(i)(j).io.dataOut,0.U)
+			rdata(1)(i)(j) 		 := Mux(rmask(0)(j)===1.U,0.U,data(i)(j).io.dataOut)
+		}
+	}
+
+	dontTouch(rdata)
 }
