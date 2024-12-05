@@ -187,7 +187,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 }
 
 class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
-
+	//将输入的地址变为index，tag形式
 	def AddressSplitter(readport:CacheReadIO)(implicit p:Parameters)={
 		val res = Wire(new CacheMsg())
 		res.tag  := (readport.raddr(XLEN-1,(indexWidth+offsetWidth)))
@@ -197,7 +197,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 		res.ren  := readport.ren
 		res
 	}
-
+//输入信号
 	val readport = Seq.fill(numReadport)(IO(new CacheReadIO()))
 	val res_data  = IO(Output(Vec((bankNum),UInt(XLEN.W))))
 	val finish    = IO(Output(Bool()))
@@ -205,43 +205,33 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new DataRAM())))
 	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new TagRAM())))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
 	
-
-	val rp = RegInit(false.B)
-	rp := (!rp) 
-
+//random替换算法
+	val rp = RegInit(0.U(log2Ceil(nWays).W))
+	rp := rp + 1.U 
+//miss处理单元
 	val missunit   = Module(new MissUnit())
 //////////////////////REFILL SIGNAL/////////////////////////////
+	//处理缺失完成数据取回来
 	val refill_end = WireInit(missunit.finish)
-	// val refillData = Wire(Vec(numReadport,Vec(bankNum,UInt(XLEN.W))))
 	val refillData = WireInit(missunit.refillData) 
-	val refillWay  = Wire(UInt(log2Ceil(nWays).W))// DETECT IF MISS WAY = REFILL_WAY
-	val refillMask = WireInit(missunit.refillMask)
+	val refillWay  = Wire(UInt(log2Ceil(nWays).W))// 要替换的Way
+	val refillMask = WireInit(missunit.refillMask)//哪个readport发生缺失
 ////////////////////////////////////////////////////////////////
-	
-//random replacement
-
 
 	require(nWays==2,"Now Only Support 2 ways assoc")
 	require(numReadport==2,"Now Only Support 2 ports")
 
-
 	val port = VecInit(readport.map{ a =>AddressSplitter(a)})
 
-
+	//读数据
 	val rdata     = Wire(Vec(numReadport,Vec(nWays,Vec(bankNum,UInt(XLEN.W)))))
-
+	//读掩码，只有掩码为1才会去读
 	val rmask     = Wire(Vec(numReadport,UInt(bankNum.W)))
 	rmask(0) := MaskUpper(UIntToOH(port(0).bank))
 	rmask(1) := !rmask(0)
 
 	val rtagv     = Wire(Vec(nWays,Vec(numReadport,UInt(tagWidth.W))))//numReadport -> cache line 
 
-// access tag
-
-
-
-//access data
-  //each port need connect both dataram , no bank conflict
 
 
 //reg1
@@ -249,29 +239,35 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val rmask_r1    = RegNext(rmask)
 //pipe2 generate hit and miss res
 
-  //if 2 way ,need judge most 4 cacheline 
+  //判断是否hit，
   //(nWays)(numPort)
 	val hitLine  = VecInit(rtagv.map{i=>
 		VecInit((i zip port_r1).map{ case(r,l)=>
 			r===l.tag
 		})
-	})
-	val t_hitLine = Transpose(hitLine)
+	})//解释了每个port，每个way是否hit
+	val t_hitLine = Transpose(hitLine)//为Mux1H构造选择矩阵，第一维度是port，第二维度是nways
+	//得到哪个way命中
+	val hitWay   = WireInit(Mux(t_hitLine(0).reduce(_|_),OHToUInt(t_hitLine(0).asUInt),OHToUInt(t_hitLine(1).asUInt)))
 
-	val hitWay   = WireInit(Mux(t_hitLine(0).reduce(_|_),OHToUInt(t_hitLine(0).asUInt),OHToUInt(t_hitLine(1).asUInt))) 
+	//访问是否命中：只有两个访问都hit才会hit
 	val hit       = t_hitLine(0).reduce(_|_)&t_hitLine(1).reduce(_|_)
 
+	//port0的访问首bank
 	val bankoff   = port_r1(0).bank
+	//port0要访问的bank掩码
 	val bankmask  = rmask_r1(0)
 
-
+	//得到每个way的重组data，也就是把两个访问数据合并
 	val wayData  = Wire(Vec(nWays,Vec(bankNum,UInt(XLEN.W))))
 	//get data table
+	//得到查找矩阵，
 	val t_wayData = Transpose(wayData)
-	val hitData  = Wire(Vec(bankNum,UInt(XLEN.W)))
-	val dataMask = Wire(Vec(bankNum,Bool()))//which data is hit
+	val hitData  = Wire(Vec(bankNum,UInt(XLEN.W)))//得到初步可能的数据
+	val dataMask = Wire(Vec(bankNum,Bool()))//保存下哪些bank命中，因为可能port0命中，但port1未命中
 	dontTouch(wayData)
 	// get sel signal(way) for each bank
+	//拼接每个way数据
 	for(i <- 0 until bankNum){
 		val dataSel = Mux(bankmask(i)===1.U,t_hitLine(0),t_hitLine(1))
 		hitData(i) := Mux1H(dataSel zip t_wayData(i))
@@ -289,11 +285,12 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	missMsg0.addr := Cat(port_r1(0).tag,(port_r1(0).index))<<offsetWidth
 	missMsg1.addr := Cat(port_r1(1).tag,(port_r1(1).index))<<offsetWidth
 	missMsg0.miss := !t_hitLine(0).reduce(_|_)
-	missMsg1.miss := !t_hitLine(1).reduce(_|_)	
-	
+	missMsg1.miss := Mux(port_r1(1).ren,!t_hitLine(1).reduce(_|_),false.B)	//如果访问的地址是cache block对齐的，那末port不会访问，也就是miss信息无效
+	assert(((!port_r1(1).ren)&(port_r1(0).offset===0.U)),"port0 addr fail")
 	val shiftArr = Wire(Vec(nWays,Vec(bankNum,Vec(bankNum,UInt(XLEN.W)))))
 
 //transpose arr to fit Mux1H
+//拼接两个port的数据
 	for (i <- 0 until nWays) {
 		val newarr = (0 until bankNum).map { j =>
 			val shift = ((0 until bankNum).map { k =>
@@ -316,7 +313,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val missMsg0_r2  = RegInit(missMsg0)
 	val missMsg1_r2  = RegInit(missMsg1)
 	val hitWay_r2    = Reg(UInt(log2Ceil(nWays).W))
-	val hitData_r2	 = Reg(Vec(bankNum,UInt(XLEN.W)))
+	val hitData_r2	 = Reg(Vec(bankNum,UInt(XLEN.W)))//为refill做准备
 	val dataMask_r2  = Reg(Vec(bankNum,Bool()))
 	val bankMask_r2	 = Reg(UInt(bankNum.W))
 	when(refill_end){
@@ -347,12 +344,16 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 		})
 		VecInit(shift)
 	}
+	//最后的refill数据，需要考虑port0，port1
+	//						 miss   hit 此时需要拼接之前的hitdata数据
+	///						 hit    miss同上
+	//						 miss   miss此时直接拼接missunit模块的数据
 	finalArr := Transpose((VecInit(newarr)))
 	for(i <- 0 until bankNum){
 		finalData(i) := Mux(dataMask_r2(i),hitData_r2(i),Mux1H(UIntToOH(bankoff),finalArr(i)))
 	}
 
-
+//refill tag和index的第0个元素总是来自第一个miss的数据
 	val refill_tag = Wire(Vec(numReadport,UInt(tagWidth.W)))
 	val refill_idx = Wire(Vec(numReadport,UInt(tagWidth.W)))
 	refill_tag(0)	:= Mux(missMsg0_r2.miss,missMsg0_r2.addr>>(offsetWidth+indexWidth),
@@ -368,6 +369,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	missunit.missmsg1 := missMsg1_r2
 	missunit.imaster  <> imaster
 /////////////////////////////OUTPUT////////////////////////////////
+//得到缺失数据的下个周期才会返回ack
 	val data_ok = RegNext(refill_end)
 	val finalData_s1 = RegNext(finalData)
 	finish := Mux(hit_r2,true.B,
@@ -412,3 +414,4 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 
 	dontTouch(rdata)
 }
+//
