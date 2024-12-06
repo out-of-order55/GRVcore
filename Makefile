@@ -10,7 +10,7 @@ VERILATOR_COVERAGE = $(VERILATOR_ROOT)/bin/verilator_coverage
 endif
 
 
-TOP_NAME=top
+TOP_NAME=SimTop
 
 
 
@@ -61,6 +61,8 @@ VERILATOR_FLAGS += -Wno-PINCONNECTEMPTY
 VERILATOR_FLAGS += -Wno-DEFPARAM
 VERILATOR_FLAGS += -Wno-WIDTHEXPAND
 VERILATOR_FLAGS += -Wno-SYNCASYNCNET
+VERILATOR_FLAGS += -Wno-MODDUP
+VERILATOR_FLAGS += -Wno-PINMISSING
 #ignore unused signal
 # VERILATOR_FLAGS += +incdir+$(DEFINE_INC) 
 VERILATOR_FLAGS += +incdir+$(WORK_DIR)/vsrc 
@@ -71,7 +73,7 @@ VERILATOR_FLAGS += +incdir+$(WORK_DIR)/vsrc
 # CSRCS = $(shell find $(abspath ./csrc) -name "*.c"  -or -name "*.cpp")
 
 VERILATOR_INPUT = $(GenerateV) $(shell find $(abspath $(WORK_DIR)/src/test/verilator) -name "*.c"  -or -name "*.cpp")
-
+VERILATOR_INPUT +=  $(shell find $(abspath $(WORK_DIR)/src/test/unit_test) -name "*.v"  -or -name "*.sv")
 ################################################################
 #############################   VCS  ###########################
 ################################################################
@@ -139,11 +141,12 @@ run:sim
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
+	@gtkwave $(WORK_DIR)/obj_dir/Vtop.vcd
 
 
 ###############################VCS############################
 VCS_CSRC ?=	 $(WORK_DIR)/src/test/vcs/top.c
-VCS_VSRC ?=  $(WORK_DIR)/src/test/vcs/tb_top.v $(GenerateV)
+VCS_VSRC ?=  $(WORK_DIR)/src/test/vcs/tb_top.v $(GenerateV)  $(shell find $(abspath $(WORK_DIR)/src/test/unit_test) -name "*.v"  -or -name "*.sv")
 
 vcs   :verilog
 	@echo "--------------------- VCS -------------------"

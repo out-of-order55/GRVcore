@@ -6,18 +6,18 @@
 #include <performance.h>
 #include <time.h>
 #include <GlobalVarible.h>
-#define TOP top
+#define TOP SimTop
 // void Performance::performance();
 #ifdef NVBOARD
 #include <nvboard.h>
 void nvboard_init(int vga_clk_cycle = 1);
 void nvboard_quit();
 void nvboard_update();
-void nvboard_bind_all_pins(Vtop* top);
+void nvboard_bind_all_pins(VSimTop* top);
 #endif
 //variable definition
 const std::unique_ptr<VerilatedContext> contextp{new VerilatedContext};
-const std::unique_ptr<Vtop> top{new Vtop{contextp.get(), "TOP"}};
+const std::unique_ptr<VSimTop> top{new VSimTop{contextp.get(), "TOP"}};
 #ifdef  CONFIG_WAVE_TRECE
 VerilatedVcdC* tfp = new VerilatedVcdC;
 #endif
