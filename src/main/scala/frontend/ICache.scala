@@ -33,9 +33,9 @@ case class ICacheParams(
 trait HasICacheParameters extends HasGRVParameters{
 	val bankNum     = blockBytes/fetchBytes
 	val indexWidth  = log2Ceil(nSets)
-	val offsetWidth = log2Ceil(blockBytes*8)
+	val offsetWidth = log2Ceil(blockBytes)
 	val tagWidth    = XLEN-indexWidth-offsetWidth
-	val bankWidth   = log2Ceil(blockBytes*8/bankNum)
+	val bankWidth   = log2Ceil(blockBytes/bankNum)
 	val fetchPacket = fetchBytes*4
 	val numReadport = 2
 }
@@ -79,10 +79,10 @@ class ICacheBundle(implicit  p:Parameters)  extends GRVBundle with HasICachePara
 
 }
 class CacheMsg(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
-    val tag    = UInt(tagWidth.W)
-    val index  = UInt(indexWidth.W)
-    val offset = UInt(offsetWidth.W)
-    val bank   = UInt(bankWidth.W)
+    val tag    = UInt((tagWidth).W)
+    val index  = UInt((indexWidth).W)
+    val offset = UInt((offsetWidth).W)
+    val bank   = UInt((bankWidth).W)
 }
 
 class SRAMIO(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
@@ -97,7 +97,7 @@ class SRAMIO(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
 
 class TagRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
     val io = IO(new SRAMIO())
-    val mem = SyncReadMem(nSets, UInt(XLEN.W))
+    val mem = SyncReadMem(nSets, UInt(tagWidth.W))
     io.dataOut := mem.readWrite(io.addr, io.dataIn, io.enable, io.write)
 }
 class DataRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
@@ -105,18 +105,7 @@ class DataRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
     val mem = SyncReadMem(nSets, UInt(XLEN.W))
     io.dataOut := mem.readWrite(io.addr, io.dataIn, io.enable, io.write)
 }
-/* TODO
-ICache功能验证：
-1.只发送一个请求（对齐访问）:初步测试框架搭建完成
-	1.先读再读：只会有一次miss
-	2.遍历地址：全部miss
-2.测试跨行访问：
-	发送两笔访问，下次访问相同地址，最多只有两次miss
-	2.遍历所有地址
-3.tag的初始化問題
-4.ICache流水线验证：如果发生miss，重新取指令，外部刷新s1阶段，重定向s0阶段，直到取回数据
-这种cache弊端就是必须连续访问
- */
+
 class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameters{
 	val missmsg0      = IO(Input(new MissMsg()))
 	val missmsg1      = IO(Input(new MissMsg()))
@@ -178,7 +167,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	}
 
 	when(state===s_wait_ack&imaster.r.fire){
-		s_refillData((rcnt/(blockBytes.U))(log2Ceil(numReadport)-1,0))((rcnt%(blockBytes.U))(log2Ceil(bankNum)-1,0)) := imaster.r.bits.data
+		s_refillData((rcnt/(bankNum.U))(log2Ceil(numReadport)-1,0))((rcnt%(bankNum.U))(log2Ceil(bankNum)-1,0)) := imaster.r.bits.data
 		rcnt := rcnt + 1.U
 	}
 
@@ -234,7 +223,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val imaster   = IO(AXI4Bundle(CPUAXI4BundleParameters()))
 
 
-	
+	println(f"tag $tagWidth $bankWidth $offsetWidth $indexWidth")
 	// val res_data  = IO(Output(Vec((bankNum),UInt(XLEN.W))))
 	// val finish    = IO(Output(Bool()))
 	
@@ -262,7 +251,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val s1_valid   = RegNext(s0_valid,false.B)
 	val s1_hitLine = VecInit((rtag zip rvalid).map{case(a,b)=>
 	VecInit((a zip b zip s1_msg).map{ case((r,m),l)=>
-		r===l.bits.tag&(RegNext(m)===true.B)
+		r===l.bits.tag&(RegNext(m,false.B)===true.B)//
 	})
 	})//解释了每个port，每个way是否hit
 
@@ -298,7 +287,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	s0_readport(0).valid        := (s0_valid)
 	s0_readport(0).bits.raddr   := (s0_vaddr)
 	s0_readport(1).valid        := ((!(s0_vaddr(offsetWidth-1,0)===0.U))&s0_valid)
-	s0_readport(1).bits.raddr   := (s0_vaddr)
+	s0_readport(1).bits.raddr   := (((s0_vaddr)>>offsetWidth)<<offsetWidth)+blockBytes.U
 	for(i <- 0 until numReadport){
 		s0_msg(i).bits := AddressSplitter(s0_readport(i).bits.raddr)
 		s0_msg(i).valid:= s0_readport(i).valid 
@@ -330,10 +319,13 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 		}
 		shiftArr(i) := Transpose((VecInit(newarr)))
 	}
-
+	dontTouch(shiftArr)
+	dontTouch(s1_bankoff)
+	val s1_bankoh = UIntToOH(s1_bankoff,bankNum)
+	dontTouch(s1_bankoh)
 	for(i<- 0 until nWays){
 		for(j<- 0 until bankNum){
-			s1_wayData(i)(j) := Mux1H(UIntToOH(s1_bankoff),shiftArr(i)(j))
+			s1_wayData(i)(j) := Mux1H(s1_bankoh,shiftArr(i)(j))
 		}
 	}
 	//get data table
@@ -341,10 +333,12 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val t_wayData = Transpose(s1_wayData)
 
 	dontTouch(s1_wayData)
+
 	// get sel signal(way) for each bank
 	//拼接每个way数据
+	val s1_mask_sel = s1_bankmask>>s1_bankoff
 	for(i <- 0 until bankNum){
-		val dataSel = Mux(s1_bankmask(i)===1.U,t_hitLine(0),t_hitLine(1))
+		val dataSel = Mux(s1_mask_sel(i)===1.U,t_hitLine(0),t_hitLine(1))
 		s1_hitData(i) := Mux1H(dataSel zip t_wayData(i))
 	}
 	
@@ -355,13 +349,16 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	s1_missMsg1.addr := Cat(s1_msg(1).bits.tag,s1_msg(1).bits.index)<<offsetWidth
 	s1_missMsg0.miss := (!t_hitLine(0).reduce(_|_))&(s1_msg(0).valid)
 	s1_missMsg1.miss := Mux(s1_msg(1).valid,!t_hitLine(1).reduce(_|_),false.B)	//如果访问的地址是cache block对齐的，那末port不会访问，也就是miss信息无效
-	assert(((!s1_msg(1).valid)&(s1_msg(0).bits.offset===0.U)),"port0 addr fail")
-
+	when(s1_valid){
+		assert(((s1_msg(0).bits.offset(1,0)===0.U)),"port0 Misalign Access")
+		assert(((s1_msg(1).bits.offset(1,0)===0.U)),"port0 Misalign Access")
+	}
+	// assert(((s1_msg(0).valid)&(s1_msg(0).bits.offset(1,0)===0.U)),"port0 Misalign Access")
 
 //////////////////////pipe2////////////////////
 	//揭示正在处理缺失
-	val refillingMsg0  = RegInit(s1_missMsg0)
-	val refillingMsg1  = RegInit(s1_missMsg1)
+	val refillingMsg0  = Reg(new MissMsg())
+	val refillingMsg1  = Reg(new MissMsg())
 
 
 	when(refilled){
@@ -369,15 +366,20 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 		refillingMsg1.miss := false.B
 	}.elsewhen(refillingMsg0.miss|refillingMsg0.miss){
 		refillingMsg0 := refillingMsg0
-		refillingMsg1 := refillingMsg0
-	}.elsewhen(s2_missMsg0.miss|s2_missMsg1.miss){
+		refillingMsg1 := refillingMsg1
+	}.elsewhen((s2_missMsg0.miss|s2_missMsg1.miss)&s2_valid){
 		refillingMsg0 := s2_missMsg0
 		refillingMsg1 := s2_missMsg1
+	}.otherwise{
+		refillingMsg0.miss := false.B
+		refillingMsg1.miss := false.B
 	}
 	// if port0 or port1 miss save data partial data miss
 //refill tag和index的第0个元素总是来自第一个miss的数据
 	val refill_tag = Wire(Vec(numReadport,UInt(tagWidth.W)))
 	val refill_idx = Wire(Vec(numReadport,UInt(tagWidth.W)))
+	dontTouch(refill_tag)
+	dontTouch(refill_idx)
 	refill_tag(0)	:= Mux(refillingMsg0.miss,refillingMsg0.addr>>(offsetWidth+indexWidth),
 					refillingMsg1.addr>>(offsetWidth+indexWidth))			
 	refill_tag(1)	:= refillingMsg1.addr>>(offsetWidth+indexWidth)	

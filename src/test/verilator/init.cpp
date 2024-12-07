@@ -39,7 +39,7 @@ static uint64_t  start_time=0;
 static uint64_t  end_time=0;
 static uint64_t  g_timer=0;
 static uint64_t g_nr_guest_inst=0;
-
+void UT_Init();
 ////////////////////////////////////////////////////////
 
 #include <sys/time.h>
@@ -334,6 +334,7 @@ void RESET(int time){
 }
 
 void test_f(){
+  UT_Init();
   #ifdef  CONFIG_WAVE_TRECE
   Verilated::traceEverOn(true);
   top->trace(tfp, 99);
@@ -342,9 +343,9 @@ void test_f(){
   top->clock = 0;
   top->reset = 1;
   RESET(12);
-  for(int i=0;i<36;i++){
+  while(1){
     CLOCK();
-    // top->io_in +=1;
+
   }
   #ifdef  CONFIG_WAVE_TRECE
   tfp->close();

@@ -20,7 +20,7 @@ class SRAMHelper extends BlackBox {
 
 //只用于仿真
 class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule{
-    val beatBytes = 8
+    val beatBytes = 4
     val node = AXI4SlaveNode(Seq(AXI4SlavePortParameters(
         Seq(AXI4SlaveParameters(
             address       = address,
@@ -46,7 +46,7 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         val burstEnable = WireInit(!(in.ar.bits.burst.orR))//只支持fixed突发
         // burstEnable:=()
 
-        val beatBytes   = WireInit((in.ar.bits.params.dataBits).U)
+        val beatBytes   = WireInit((in.ar.bits.params.dataBits/8).U)
         val transLen    = WireInit((in.ar.bits.len))
         val raddr       = Reg(UInt(32.W))
         dontTouch(burstEnable)
@@ -115,42 +115,190 @@ class ICacheWrapper(implicit p: Parameters) extends LazyModule with HasICachePar
     
 }
 }
-class CacheTest (implicit p:Parameters)extends LazyModule with HasICacheParameters{
+/* TODO
+ICache功能验证：
+1.只发送一个请求（对齐访问）:初步测试框架搭建完成
+	1.先读再读：只会有一次miss
+	2.遍历地址：全部miss
+PASS
+2.测试跨行访问：
+	发送两笔访问，下次访问相同地址，最多只有两次miss
+    遍历所有地址，并检查读出的数据是否正确
+完成
+3.tag的初始化問題：完成
+4.ICache流水线验证：如果发生miss，重新取指令，外部刷新s1阶段，重定向s0阶段，直到取回数据
+这种cache弊端就是必须连续访问
+ */
 
-
+class Checker extends BlackBox {
+    val io = IO(new Bundle {
+        val clock = Input(Clock())
+        val reset = Input(Bool())
+        val finish= Input(Bool())
+        val ret   = Input(Bool())
+    })
+}
+class CacheTest1 (implicit p:Parameters)extends LazyModule with HasICacheParameters{
     val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x0, 0x1000)))
     val icache = LazyModule(new ICacheWrapper())
-
-
     lsram.node:=icache.masterNode 
-
-
     override lazy val module = new Impl
     class Impl extends LazyModuleImp(this) with DontTouch {
-        val s0_vaddr      = WireInit(0.U(XLEN.W))
-        val s0_valid     = WireInit(false.B)
-        val f1_clear     = WireInit(false.B)
+        // io.finish := icache.module.io.resp.valid
 
-        val start = RegInit(false.B)
-        start := true.B
-        val start1 = RegNext(start)
-        dontTouch(start)
-        dontTouch(start1)
-        when ((start)&(!start1)){
-            s0_valid     := true.B
-            s0_vaddr     := 0.U
-        }
-        dontTouch(f1_clear)
+        val check        = Module(new Checker)
+        val s0_vpc       = WireInit(0.U(XLEN.W))
+        val s0_valid     = WireInit(false.B)
+        val timer        = RegInit(0.U(32.W))
+        val f1_clear     = WireInit(false.B)
+        val s1_vpc       = RegNext(s0_vpc)
+        val s2_vpc       = RegNext(s1_vpc)
+        val start        = RegInit(false.B)
         val s1_valid     = RegNext(s0_valid, false.B)
         val s2_valid     = RegNext(s1_valid && !f1_clear, false.B)
-        when(s2_valid&(!icache.module.io.resp.valid)){
-            f1_clear := true.B
-            s0_vaddr := 0.U
+
+        start := true.B
+        val start1 = RegNext(start)
+        val data_fail = Wire(Bool())
+        val fail = WireInit(icache.module.io.resp.valid&s2_valid&data_fail)
+        dontTouch(fail)
+/////////////////Checker///////////////////
+        check.io.clock := clock
+        check.io.reset := reset
+        when(s0_vpc===(blockBytes*50).U){
+            check.io.finish := true.B
+            check.io.ret    := false.B 
+        }.elsewhen(timer===50.U){
+            // println("Bus fail")
+            check.io.finish := true.B
+            check.io.ret    := true.B 
+        }.elsewhen(fail){
+            // println("Data fail")
+            check.io.finish := true.B
+            check.io.ret    := true.B 
+        }
+        .otherwise{
+            check.io.finish := false.B
+            check.io.ret    := false.B 
+        }
+        dontTouch(start)
+        dontTouch(start1)
+        dontTouch(f1_clear)
+//////////////////////////////////////////
+        when ((start)&(!start1)){
+            s0_valid   := true.B
+            s0_vpc     := 0.U
+        }
+        when(s1_valid&(!f1_clear)){
+            s0_vpc   := s1_vpc + blockBytes.U 
             s0_valid := true.B
         }
 
+        when(s2_valid&(!icache.module.io.resp.valid)){
+            f1_clear := true.B
+            s0_vpc   := s2_vpc
+            s0_valid := true.B
+        }
+
+        //检测总线卡死
+        
+        timer := timer + 1.U
+        when(icache.module.io.resp.valid){
+            timer := 0.U
+        }
+        //检测数据是否正确
+        data_fail := ( 0 until bankNum).map{i=>
+            icache.module.io.resp.bits.data(i)=/=(s2_vpc/fetchBytes.U+i.U)
+        }.reduce(_|_)
         icache.module.io.req.valid      := s0_valid
-        icache.module.io.req.bits.raddr := s0_vaddr 
+        icache.module.io.req.bits.raddr := s0_vpc 
+        icache.module.io.s1_kill        := f1_clear
+        icache.module.io.s2_kill        := false.B
+        icache.module.io.invalidate     := false.B
+        icache.module.io.resp.bits.data := DontCare
+        dontTouch(icache.module.io)
+    }
+  // s.dontTouchPorts()
+}
+class CacheTest2 (implicit p:Parameters)extends LazyModule with HasICacheParameters{
+    val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x0, 0x1000)))
+    val icache = LazyModule(new ICacheWrapper())
+    lsram.node:=icache.masterNode 
+    override lazy val module = new Impl
+    class Impl extends LazyModuleImp(this) with DontTouch {
+        val testoff      = 0xc
+        val check        = Module(new Checker)
+        val s0_vpc       = WireInit(0.U(XLEN.W))
+        val s0_valid     = WireInit(false.B)
+        val timer        = RegInit(0.U(32.W))
+        val f1_clear     = WireInit(false.B)
+        val s1_vpc       = RegNext(s0_vpc)
+        val s2_vpc       = RegNext(s1_vpc)
+        val start        = RegInit(false.B)
+        val s1_valid     = RegNext(s0_valid, false.B)
+        val s2_valid     = RegNext(s1_valid && !f1_clear, false.B)
+
+        start := true.B
+        val start1 = RegNext(start)
+        val data_fail = Wire(Bool())
+        val fail = WireInit(icache.module.io.resp.valid&s2_valid&data_fail)
+        dontTouch(fail)
+        val finish =  RegInit(false.B)
+        val ret    =  RegInit(false.B)
+/////////////////Checker///////////////////
+        check.io.clock := clock
+        check.io.reset := reset
+        check.io.finish := finish
+        check.io.ret    := ret   
+        when(s0_vpc===(blockBytes*50+testoff).U){
+            finish := true.B
+            ret    := false.B 
+        }.elsewhen(timer===50.U){
+            // println("Bus fail")
+            printf("Bus Fail\n")
+            finish := true.B
+            ret    := true.B 
+        }.elsewhen(fail){
+            // println("Data fail")
+            printf("Data Fail\n")
+            finish := true.B
+            ret    := true.B 
+        }
+        .otherwise{
+            finish := false.B
+            ret    := false.B 
+        }
+        dontTouch(start)
+        dontTouch(start1)
+        dontTouch(f1_clear)
+//////////////////////////////////////////
+        when ((start)&(!start1)){
+            s0_valid   := true.B
+            s0_vpc     := testoff.U
+        }
+        when(s1_valid&(!f1_clear)){
+            s0_vpc   := s1_vpc + blockBytes.U 
+            s0_valid := true.B
+        }
+
+        when(s2_valid&(!icache.module.io.resp.valid)){
+            f1_clear := true.B
+            s0_vpc   := s2_vpc
+            s0_valid := true.B
+        }
+
+        //检测总线卡死
+        
+        timer := timer + 1.U
+        when(icache.module.io.resp.valid){
+            timer := 0.U
+        }
+        //检测数据是否正确
+        data_fail := ( 0 until bankNum).map{i=>
+            icache.module.io.resp.bits.data(i)=/=(s2_vpc/fetchBytes.U+i.U)
+        }.reduce(_|_)
+        icache.module.io.req.valid      := s0_valid
+        icache.module.io.req.bits.raddr := s0_vpc 
         icache.module.io.s1_kill        := f1_clear
         icache.module.io.s2_kill        := false.B
         icache.module.io.invalidate     := false.B

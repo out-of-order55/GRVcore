@@ -13,7 +13,9 @@ class SimTop (implicit p:Parameters)extends Module{
   
   val io = IO(new Bundle {})
 
-  val cache = LazyModule(new CacheTest())
+  val cache = LazyModule(new CacheTest2())
+
+  
   val c = Module(cache.module)
   c.dontTouchPorts()
 
