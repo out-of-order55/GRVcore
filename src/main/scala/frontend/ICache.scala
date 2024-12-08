@@ -31,7 +31,7 @@ case class ICacheParams(
 }
 
 trait HasICacheParameters extends HasGRVParameters{
-	val bankNum     = blockBytes/fetchBytes
+	val bankNum     = blockBytes/(XLEN/8)
 	val indexWidth  = log2Ceil(nSets)
 	val offsetWidth = log2Ceil(blockBytes)
 	val tagWidth    = XLEN-indexWidth-offsetWidth
@@ -85,27 +85,31 @@ class CacheMsg(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
     val bank   = UInt((bankWidth).W)
 }
 
-class SRAMIO(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
+class SRAMIO(width:Int)(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
     val enable = Input(Bool())
     val write = Input(Bool())
-    val addr = Input(UInt(10.W))
-    val dataIn = Input(UInt(XLEN.W))
-    val dataOut = Output(UInt(XLEN.W))
+    val addr = Input(UInt(log2Ceil(nSets).W))
+    val dataIn = if(width==1) Input(Bool()) else Input(UInt(width.W))
+    val dataOut = if(width==1) Output(Bool()) else Output(UInt(width.W))
 }
 
 
 
 class TagRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
-    val io = IO(new SRAMIO())
+    val io = IO(new SRAMIO(tagWidth))
     val mem = SyncReadMem(nSets, UInt(tagWidth.W))
     io.dataOut := mem.readWrite(io.addr, io.dataIn, io.enable, io.write)
 }
 class DataRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
-    val io = IO(new SRAMIO())
+    val io = IO(new SRAMIO(XLEN))
     val mem = SyncReadMem(nSets, UInt(XLEN.W))
     io.dataOut := mem.readWrite(io.addr, io.dataIn, io.enable, io.write)
 }
-
+class ValidRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
+    val io = IO(new SRAMIO(1))
+    val mem = SyncReadMem(nSets, Bool())
+    io.dataOut := mem.readWrite(io.addr, io.dataIn.asBool, io.enable, io.write)
+}
 class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameters{
 	val missmsg0      = IO(Input(new MissMsg()))
 	val missmsg1      = IO(Input(new MissMsg()))
@@ -208,6 +212,11 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	}
 }
 
+
+/* 
+ICache逻辑部分面积大概6400，MISSUNIT 为2700，之前将valid设置为regfile，导致面积为14000，差不多1bit的触发器面积为9
+
+ */
 class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	//将输入的地址变为index，tag形式
 	def AddressSplitter(addr:UInt)(implicit p:Parameters)={
@@ -228,7 +237,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	// val finish    = IO(Output(Bool()))
 	
 
-	val rdata        = Wire(Vec(numReadport,Vec(nWays,Vec(bankNum,UInt(XLEN.W)))))
+	val rdata     = Wire(Vec(numReadport,Vec(nWays,Vec(bankNum,UInt(XLEN.W)))))
 	val rtag      = Wire(Vec(nWays,Vec(numReadport,UInt(tagWidth.W))))//numReadport -> cache line 
 	val rvalid    = Wire(Vec(nWays,Vec(numReadport,Bool())))
 
@@ -251,7 +260,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val s1_valid   = RegNext(s0_valid,false.B)
 	val s1_hitLine = VecInit((rtag zip rvalid).map{case(a,b)=>
 	VecInit((a zip b zip s1_msg).map{ case((r,m),l)=>
-		r===l.bits.tag&(RegNext(m,false.B)===true.B)//
+		r===l.bits.tag&(m===true.B)//
 	})
 	})//解释了每个port，每个way是否hit
 
@@ -276,10 +285,8 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 
 	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new DataRAM())))
 	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new TagRAM())))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
-	val valid     =  RegInit(VecInit(Seq.fill(nWays)(
-							VecInit(Seq.fill(numReadport)(
-							VecInit(Seq.fill(nSets)(false.B))
-							)))))
+	val valid     =  Seq.fill(nWays)(Seq.fill(numReadport)(Module(new ValidRAM())))
+							
 //random替换算法
 	val rp = RegInit(0.U(log2Ceil(nWays).W))
 	rp := rp + 1.U 
@@ -409,11 +416,13 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 			tag(i)(j).io.write  :=  Mux((i.U===refillWay||i.U===((refillWay+1.U)%nWays.U))&(refilled)&(refillMask.xorR===false.B),true.B,
 									Mux((i.U===refillWay)&(refilled)&(refillMask.xorR===true.B),true.B,false.B))
 			tag(i)(j).io.dataIn := Mux((i.U===refillWay)&(refilled),refill_tag(0),refill_tag(1)) 
+
+			valid(i)(j).io.enable  := tag(i)(j).io.enable 
+			valid(i)(j).io.addr    := tag(i)(j).io.addr   
+			valid(i)(j).io.write   := tag(i)(j).io.write 
+			valid(i)(j).io.dataIn  := true.B
 			rtag(i)(j)  := tag(i)(j).io.dataOut
-			rvalid(i)(j):= valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0))
-			when(tag(i)(j).io.write){
-				valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0)) :=  true.B
-			}
+			rvalid(i)(j):= valid(i)(j).io.dataOut
 		}
 	}
 ////////////////////////////////DATA RAM////////////////////////////

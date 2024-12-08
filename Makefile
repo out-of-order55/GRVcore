@@ -169,6 +169,7 @@ show-config:
 	$(VERILATOR) -V
 perf:
 	cd $(YSYX_HOME)/am-kernels/benchmarks/microbench && make ARCH=riscv32e-ysyx_soc mainargs=train run
+
 clean:
 	rm -rf  ./build ./obj_dir *~  core  csrc  simv*  vc_hdrs.h  ucli.key  urg* *.log  novas.* *.fsdb* verdiLog  64* DVEfiles *.vpd
 

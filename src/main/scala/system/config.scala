@@ -9,20 +9,27 @@ import org.chipsalliance.cde.config._
 
 case object CoreKey extends Field[CoreParams]
 case class CoreParams(
-    XLEN:Int =32
+    XLEN:Int =32,
+    globalHistoryLength:Int = 10,
+    bpdMaxMetaLength:Int = 64,
+    numBr:Int = 1,
+    BIMParams:Option[BIMParams] = Some(new BIMParams) 
+    // branchPredictor: Function2[BranchPredictionBankResponse, Parameters, Tuple2[Seq[BranchPredictorBank], BranchPredictionBankResponse]] = ((resp_in: BranchPredictionBankResponse, p: Parameters) => (Nil, resp_in))
     ) {
 }
 
-// trait HasCoreParameters {
-//     implicit val p:Parameters
-//     val CoreParams = p(CoreKey)
-//     val XLEN        = CoreParams.XLEN      
-// }
+
 trait HasGRVParameters{
     implicit val p:Parameters
     ///core
     val CoreParams = p(CoreKey)
     val XLEN        = CoreParams.XLEN
+    val globalHistoryLength = CoreParams.globalHistoryLength
+    val bpdMaxMetaLength = CoreParams.bpdMaxMetaLength
+    val bimParams        = Some(CoreParams.BIMParams)
+    // def getBPDComponents(resp_in: BranchPredictionBankResponse, p: Parameters) = {
+    //     CoreParams.branchPredictor(resp_in, p)
+    // }
     //ICache
     val ICacheParams = p(ICacheKey)
     val nSets        = ICacheParams.nSets      
@@ -31,6 +38,10 @@ trait HasGRVParameters{
     val prefetch     = ICacheParams.prefetch  
     val blockBytes   = ICacheParams.blockBytes
     val fetchBytes   = ICacheParams.fetchBytes
+    val fetchWidth   = blockBytes/(XLEN/8)
+    val bankWidth    = fetchWidth
+    def fetchIdx(addr: UInt)  = addr >> log2Ceil(fetchBytes)
+    def bankoffset(addr:UInt) = addr(offsetWidth-1,offsetWidth-bankWidth)
 }
 class BaseConfig extends Config((site, here, up) => {
     case CoreKey => CoreParams()
