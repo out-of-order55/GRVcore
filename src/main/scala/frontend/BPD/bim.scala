@@ -23,6 +23,8 @@ bim在提交时更新，更新时是根据自己携带的meta更新，而不是�
 如果有两条分支，第一条已经提交并且更新bim，当第二条提交时，此时bim值不是最新的，在bim表中的才是最新的，所以要bypass最新写入的值
 目前准备写支持跨指令包的预测器，预测要对整个指令包的每个指令预测,然后前端选择出第一个预测taken的指令
 主体逻辑面积1300（均不带SRAM）
+
+后端送入的pc为指令包的首pc，
  */
 
 class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor  
@@ -76,7 +78,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
 
     val s1_update_crossRow        = (!(s1_update.bits.pc(offsetWidth-1,0)===0.U))&s1_update.valid
     val s1_update_bankoh          = UIntToOH(bankoffset(s1_update.bits.pc))
-    val s1_update_bankmask        = MaskUpper(bankoh)
+    val s1_update_bankmask        = MaskUpper(s1_update_bankoh)
 
     val wrbypass_idxs    = Reg(Vec(nWrBypassEntries, UInt(log2Ceil(BimnSets).W)))
     val wrbypass         = Reg(Vec(nWrBypassEntries, Vec(bankNum, UInt(2.W))))

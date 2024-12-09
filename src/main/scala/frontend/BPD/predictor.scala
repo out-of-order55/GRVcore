@@ -35,14 +35,20 @@ class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle with HasF
     def is_commit_update = !(is_mispredict_update)
 
     //找出那条是分支指令（目前仅支持1条分支预测）
-    val cfi_idx = Valid(UInt(log2Ceil(bankNum).W))
+    val cfi_idx   = Valid(UInt(log2Ceil(bankNum).W))
+    val cfi_taken = Bool()
     //是否推测更新失败，主要针对ghist
     val br_taken     = Bool()
-    val br_mask      = Vec(bankNum,Bool())
+    val br_mask      = UInt(bankNum.W)
     val is_br        = Bool()
+    val is_jal       = Bool()
 
     val target        = UInt(XLEN.W)
 }
+
+/* 
+call和ret在s2预测，其他阶段都是s1
+ */
 abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasFrontendParameters
 {
     val metaSz = 0

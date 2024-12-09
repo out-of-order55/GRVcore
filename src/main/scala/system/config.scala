@@ -13,7 +13,8 @@ case class CoreParams(
     globalHistoryLength:Int = 10,
     bpdMaxMetaLength:Int = 64,
     numBr:Int = 1,
-    BIMParams:Option[BIMParams] = Some(new BIMParams) 
+    BIMParams:Option[BIMParams] = Some(new BIMParams) ,
+    UBTBParams:Option[MicroBTBParams] = Some(new MicroBTBParams) 
     // branchPredictor: Function2[BranchPredictionBankResponse, Parameters, Tuple2[Seq[BranchPredictorBank], BranchPredictionBankResponse]] = ((resp_in: BranchPredictionBankResponse, p: Parameters) => (Nil, resp_in))
     ) {
 }
@@ -27,6 +28,7 @@ trait HasGRVParameters{
     val globalHistoryLength = CoreParams.globalHistoryLength
     val bpdMaxMetaLength = CoreParams.bpdMaxMetaLength
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
+    val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
     // def getBPDComponents(resp_in: BranchPredictionBankResponse, p: Parameters) = {
     //     CoreParams.branchPredictor(resp_in, p)
     // }
