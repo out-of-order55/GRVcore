@@ -27,7 +27,7 @@ case class ICacheParams(
     fetchBytes: Int = 4,
     
     ) {
-
+	
 }
 
 trait HasICacheParameters extends HasGRVParameters{
@@ -85,31 +85,6 @@ class CacheMsg(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
     val bank   = UInt((bankWidth).W)
 }
 
-class SRAMIO(width:Int)(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
-    val enable = Input(Bool())
-    val write = Input(Bool())
-    val addr = Input(UInt(log2Ceil(nSets).W))
-    val dataIn = if(width==1) Input(Bool()) else Input(UInt(width.W))
-    val dataOut = if(width==1) Output(Bool()) else Output(UInt(width.W))
-}
-
-
-
-class TagRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
-    val io = IO(new SRAMIO(tagWidth))
-    val mem = SyncReadMem(nSets, UInt(tagWidth.W))
-    io.dataOut := mem.readWrite(io.addr, io.dataIn, io.enable, io.write)
-}
-class DataRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
-    val io = IO(new SRAMIO(XLEN))
-    val mem = SyncReadMem(nSets, UInt(XLEN.W))
-    io.dataOut := mem.readWrite(io.addr, io.dataIn, io.enable, io.write)
-}
-class ValidRAM(implicit p:Parameters) extends GRVModule with HasICacheParameters{
-    val io = IO(new SRAMIO(1))
-    val mem = SyncReadMem(nSets, Bool())
-    io.dataOut := mem.readWrite(io.addr, io.dataIn.asBool, io.enable, io.write)
-}
 class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameters{
 	val missmsg0      = IO(Input(new MissMsg()))
 	val missmsg1      = IO(Input(new MissMsg()))
@@ -283,9 +258,9 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val s2_hit 	  = RegNext(s1_hit)
 	val s2_hitData= RegNext(s1_hitData)
 
-	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new DataRAM())))
-	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new TagRAM())))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
-	val valid     =  Seq.fill(nWays)(Seq.fill(numReadport)(Module(new ValidRAM())))
+	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new SRAM(XLEN,nSets))))
+	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new SRAM(tagWidth,nSets))))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
+	val valid     = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new SRAM(1,nSets))))
 							
 //random替换算法
 	val rp = RegInit(0.U(log2Ceil(nWays).W))

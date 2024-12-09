@@ -26,7 +26,7 @@ trait HasGRVParameters{
     val XLEN        = CoreParams.XLEN
     val globalHistoryLength = CoreParams.globalHistoryLength
     val bpdMaxMetaLength = CoreParams.bpdMaxMetaLength
-    val bimParams        = Some(CoreParams.BIMParams)
+    val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     // def getBPDComponents(resp_in: BranchPredictionBankResponse, p: Parameters) = {
     //     CoreParams.branchPredictor(resp_in, p)
     // }
@@ -39,9 +39,8 @@ trait HasGRVParameters{
     val blockBytes   = ICacheParams.blockBytes
     val fetchBytes   = ICacheParams.fetchBytes
     val fetchWidth   = blockBytes/(XLEN/8)
-    val bankWidth    = fetchWidth
     def fetchIdx(addr: UInt)  = addr >> log2Ceil(fetchBytes)
-    def bankoffset(addr:UInt) = addr(offsetWidth-1,offsetWidth-bankWidth)
+    
 }
 class BaseConfig extends Config((site, here, up) => {
     case CoreKey => CoreParams()

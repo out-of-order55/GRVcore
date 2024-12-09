@@ -20,13 +20,13 @@ class BPReq(implicit p: Parameters) extends GRVBundle
     val ghist   = UInt(globalHistoryLength.W)
 }
 
-class BPResp(implicit p: Parameters) extends GRVBundle
+class BPResp(implicit p: Parameters) extends GRVBundle with HasFrontendParameters
 {
-    val f1 = Vec(fetchWidth,new BranchPrediction())
-    val f2 = Vec(fetchWidth,new BranchPrediction())
-    val f3 = Vec(fetchWidth,new BranchPrediction())
+    val f1 = Vec(bankNum,new BranchPrediction())
+    val f2 = Vec(bankNum,new BranchPrediction())
+    val f3 = Vec(bankNum,new BranchPrediction())
 }
-class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle
+class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle with HasFrontendParameters
 {
     val pc      = UInt(XLEN.W)
     val meta    = UInt(bpdMaxMetaLength.W)
@@ -35,15 +35,15 @@ class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle
     def is_commit_update = !(is_mispredict_update)
 
     //找出那条是分支指令（目前仅支持1条分支预测）
-    val cfi_idx = Valid(UInt(log2Ceil(fetchWidth).W))
+    val cfi_idx = Valid(UInt(log2Ceil(bankNum).W))
     //是否推测更新失败，主要针对ghist
     val br_taken     = Bool()
-    val br_mask      = Vec(bankWidth,Bool())
+    val br_mask      = Vec(bankNum,Bool())
     val is_br        = Bool()
 
     val target        = UInt(XLEN.W)
 }
-abstract class BasePredictor(implicit p: Parameters) extends GRVModule
+abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasFrontendParameters
 {
     val metaSz = 0
 
