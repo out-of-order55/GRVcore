@@ -7,7 +7,7 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
-class SRAMHelper extends BlackBox {
+class SIMSRAM extends BlackBox {
     val io = IO(new Bundle {
         val clock = Input(Clock())
         val reset = Input(Bool())
@@ -35,7 +35,7 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
     class Impl extends LazyModuleImp(this) with DontTouch{
         val (in, _) = node.in(0)
 
-        val sram = Module(new SRAMHelper)
+        val sram = Module(new SIMSRAM)
         sram.io.clock := clock
         sram.io.reset := reset
         val s_idle :: s_wait_ack :: Nil = Enum(2)

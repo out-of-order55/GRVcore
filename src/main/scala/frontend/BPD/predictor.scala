@@ -19,8 +19,15 @@ class BPReq(implicit p: Parameters) extends GRVBundle
     val pc      = UInt(XLEN.W)
     val ghist   = UInt(globalHistoryLength.W)
 }
+class BranchPredictionBundle(implicit p: Parameters) extends GRVBundle()(p)
+with HasFrontendParameters
+{
+    val pc = UInt(XLEN.W)
+    val preds = Vec(fetchWidth, new BranchPrediction)
+    val meta = Output(Vec(bankNum, UInt(bpdMaxMetaLength.W)))
 
-class BPResp(implicit p: Parameters) extends GRVBundle with HasFrontendParameters
+}
+class BPResp(implicit p: Parameters) extends GRVBundle()(p) with HasFrontendParameters
 {
     val f1 = Vec(bankNum,new BranchPrediction())
     val f2 = Vec(bankNum,new BranchPrediction())
@@ -31,7 +38,7 @@ class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle with HasF
     val pc      = UInt(XLEN.W)
     val meta    = UInt(bpdMaxMetaLength.W)
     val is_mispredict_update = Bool()
-
+    val ghist   = UInt(globalHistoryLength.W)
     def is_commit_update = !(is_mispredict_update)
 
     //找出那条是分支指令（目前仅支持1条分支预测）
@@ -42,36 +49,38 @@ class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle with HasF
     val br_mask      = UInt(bankNum.W)
     val is_br        = Bool()
     val is_jal       = Bool()
-
+    val is_jalr      = Bool()
     val target        = UInt(XLEN.W)
 }
 
 /* 
 call和ret在s2预测，其他阶段都是s1
+这里用的是信号重载，继承这个抽象类的都可以修改信号
+但注意要有对应关系，具体的：
+每个阶段得有方向预测和地址预测，方向预测只给出taken信息，地址预测给出分支类型和地址（ubtb除外），否则信号会被覆盖
  */
 abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasFrontendParameters
 {
     val metaSz = 0
 
     val io = IO(new Bundle {
-    val f0_valid = Input(Bool())
-    val f0_pc    = Input(UInt(XLEN.W))
+        val f0_valid = Input(Bool())
+        val f0_pc    = Input(UInt(XLEN.W))
 
-    val f1_ghist = Input(UInt(globalHistoryLength.W))
+        val f1_ghist = Input(UInt(globalHistoryLength.W))
 
 
-    val resp_in = Input(new BPResp)
-    val resp = Output(new BPResp)
+        val resp_in = Input(new BPResp)
+        val resp = Output(new BPResp)
 
-    // 保存从分支预测器旧的状态，比如bim值，BTB的tag信息，GSAHRE读出的ctr值，
-    val f3_meta = Output(UInt(bpdMaxMetaLength.W))
+        // 保存从分支预测器旧的状态，比如bim值，BTB的tag信息，GSAHRE读出的ctr值，
+        val f3_meta = Output(UInt(bpdMaxMetaLength.W))
 
-    val f3_fire = Input(Bool())
+        val f3_fire = Input(Bool())
 
-    val update = Input(Valid(new BranchPredictionUpdate))
+        val update = Input(Valid(new BranchPredictionUpdate))
     })
     io.resp := io.resp_in
-
     io.f3_meta := 0.U
 
     val s0_idx       = fetchIdx(io.f0_pc)
@@ -95,4 +104,81 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val s1_update_idx = RegNext(s0_update_idx)
     val s1_update_valid = RegNext(s0_update_valid)
 
+}
+
+class BranchPredictor(implicit p: Parameters) extends GRVModule()(p)
+with HasFrontendParameters
+{
+    val io = IO(new Bundle {
+        // Requests and responses
+        val f0_req = Input(Valid(new BPReq))
+        val resp = Output(new Bundle {
+        val f1 = new BranchPredictionBundle
+        val f2 = new BranchPredictionBundle
+        val f3 = new BranchPredictionBundle
+        })
+
+        val f3_fire = Input(Bool())
+
+        // Update
+        val update = Input(Valid(new BranchPredictionUpdate))
+    })
+
+    var total_memsize = 0
+
+    val banked_predictors = Module(new Composer)
+    
+
+
+
+    banked_predictors.io.f0_valid := io.f0_req.valid
+    banked_predictors.io.f0_pc    := io.f0_req.bits.pc
+    banked_predictors.io.f1_ghist := RegNext(io.f0_req.bits.ghist)
+    banked_predictors.io.resp_in  := (0.U).asTypeOf(new BPResp)
+
+    io.resp.f3.meta := DontCare
+    io.resp.f1.preds    := banked_predictors.io.resp.f1
+    io.resp.f2.preds    := banked_predictors.io.resp.f2
+    io.resp.f3.preds    := banked_predictors.io.resp.f3
+    io.resp.f3.meta(0)  := banked_predictors.io.f3_meta
+    banked_predictors.io.f3_fire := io.f3_fire
+
+
+    io.resp.f1.pc := RegNext(io.f0_req.bits.pc)
+    io.resp.f2.pc := RegNext(io.resp.f1.pc)
+    io.resp.f3.pc := RegNext(io.resp.f2.pc)
+
+
+    io.resp.f1.meta := DontCare
+    io.resp.f2.meta := DontCare
+
+
+
+    banked_predictors.io.update.bits.meta             := io.update.bits.meta
+
+    banked_predictors.io.update.bits.cfi_idx.bits     := io.update.bits.cfi_idx.bits
+    banked_predictors.io.update.bits.cfi_taken        := io.update.bits.cfi_taken
+    banked_predictors.io.update.bits.br_taken        := io.update.bits.br_taken
+    banked_predictors.io.update.bits.is_br            := io.update.bits.is_br
+    banked_predictors.io.update.bits.is_jal           := io.update.bits.is_jal
+    banked_predictors.io.update.bits.is_jalr          := io.update.bits.is_jalr
+    banked_predictors.io.update.bits.target           := io.update.bits.target
+    banked_predictors.io.update.bits.is_mispredict_update          := io.update.bits.is_mispredict_update
+
+
+    banked_predictors.io.update.valid                 := io.update.valid
+    banked_predictors.io.update.bits.pc               := io.update.bits.pc
+    banked_predictors.io.update.bits.br_mask          := io.update.bits.br_mask
+    // banked_predictors.io.update.bits.btb_mispredicts  := io.update.bits.btb_mispredicts
+    banked_predictors.io.update.bits.cfi_idx.valid    := io.update.bits.cfi_idx.valid
+    banked_predictors.io.update.bits.ghist            := io.update.bits.ghist
+
+
+
+
+    when (io.update.valid) {
+        when (io.update.bits.is_br && io.update.bits.cfi_idx.valid) {
+        assert(io.update.bits.br_mask(io.update.bits.cfi_idx.bits))
+        }
+    }
 }

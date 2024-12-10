@@ -1,4 +1,4 @@
-module SRAMHelper(
+module SIMSRAM(
   input [31:0] raddr,
   input clock,
   input reset,

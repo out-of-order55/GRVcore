@@ -258,9 +258,9 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val s2_hit 	  = RegNext(s1_hit)
 	val s2_hitData= RegNext(s1_hitData)
 
-	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new SRAM(XLEN,nSets))))
-	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new SRAM(tagWidth,nSets))))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
-	val valid     = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new SRAM(1,nSets))))
+	val data      = Seq.fill(nWays)(Seq.fill(bankNum)(Module(new SRAMHelper(nSets,UInt(XLEN.W)))))
+	val tag       = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new SRAMHelper(nSets,UInt(tagWidth.W)))))// each way has n(numReadport) ram//if numReadport==2,tag(i)(0)for port0
+	val valid     = Seq.fill(nWays)(Seq.fill(numReadport)(Module(new SRAMHelper(nSets,Bool()))))
 							
 //random替换算法
 	val rp = RegInit(0.U(log2Ceil(nWays).W))

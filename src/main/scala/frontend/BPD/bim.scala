@@ -51,7 +51,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
     when (reset_idx === (BimnSets-1).U) { doing_reset := false.B }
 
 
-    val data  = Seq.fill(bankNum)(Module(new SRAM(BimnSets,2)))
+    val data  = Seq.fill(bankNum)(Module(new SRAMHelper(BimnSets,UInt(2.W))))
 
     // val mems = Seq(("bim", nSets, bankWidth * 2))
     //处理跨行请求
@@ -64,6 +64,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
 
     val s2_resp         = Wire(Vec(bankNum, Bool()))
 
+    
     for (w <- 0 until bankNum) {
 
         s2_resp(w)        := s2_valid && s2_req_rdata(w)(1) && !doing_reset

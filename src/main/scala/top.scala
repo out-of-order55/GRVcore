@@ -35,7 +35,7 @@ object Elaborate extends App {
     "locationInfoStyle=wrapInAtSquareBracket"
     ).reduce(_ + "," + _))
     // val add = LazyModule(new AdderTestHarness()(Parameters.empty))
-    circt.stage.ChiselStage.emitSystemVerilogFile( new BIMBranchPredictor(), args, firtoolOptions)
+    circt.stage.ChiselStage.emitSystemVerilogFile( new SimTop(), args, firtoolOptions)
   // DifftestModule.finish("Demo", false)
 
 }

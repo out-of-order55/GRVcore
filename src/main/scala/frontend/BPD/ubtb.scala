@@ -7,12 +7,20 @@ import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
 
 case class MicroBTBParams(
-    nWays: Int = 128,
+    nWays: Int = 4,
     offsetSz: Int = 21
 )
 
-
-class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor
+/* 
+改编自boom的ubtb
+ubtb 使用寄存器堆搭建不是一个好的选择，面积太大：50000，除了存储以外的逻辑大概为1500左右
+16way：50000
+8：27000
+4：12000
+2：10000
+允许跨行
+ */
+class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
 {
     val ubtbnWays     = ubtbParams.getOrElse(MicroBTBParams()).nWays
     val tagSz         = XLEN - log2Ceil(fetchWidth) - 1
@@ -66,6 +74,7 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor
     val s1_is_br  = Wire(Vec(bankNum, Bool()))
     val s1_is_jal = Wire(Vec(bankNum, Bool()))
 
+    //读mata
     val s1_hit_ohs = VecInit((0 until bankNum) map { i =>
         val tag = Mux(s1_bankmask(i),s1_req_tag,s1_req_tag+1.U)
         VecInit((0 until ubtbnWays) map { w =>
@@ -94,9 +103,9 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor
     val s1_hit1_oh= Wire(Vec(bankNum,UInt(ubtbnWays.W)))
     for(w <- 0 until bankNum){
         s1_hit0(w) := Mux(s1_bankmask(w),s1_hits(w),false.B)
-        s1_hit0_oh(w) := Mux(s1_bankmask(w),s1_hit_ohs(w),0.U)
+        s1_hit0_oh(w) := Mux(s1_bankmask(w),s1_hit_ohs(w).asUInt,0.U)
         s1_hit1(w) := Mux(s1_bankmask(w),false.B,s1_hits(w))
-        s1_hit1_oh(w) := Mux(s1_bankmask(w),0.U,s1_hit_ohs(w))
+        s1_hit1_oh(w) := Mux(s1_bankmask(w),0.U,s1_hit_ohs(w).asUInt)
 
     }
     // val s1_hit1 = 
@@ -157,7 +166,6 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor
             val was_taken = (s1_update_cfi_idx === w.U && s1_update.bits.cfi_idx.valid &&
                 (s1_update.bits.cfi_taken || s1_update.bits.is_jal))
             val ptr   = (w.U+bankoffset(s1_update.bits.pc))%bankNum.U 
-
             val meta_update_write_way = Mux(s1_update_bankmask(w),
                                 s1_update_write_way(0),s1_update_write_way(1))
             for(j <- 0 until bankNum){

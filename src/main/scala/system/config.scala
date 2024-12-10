@@ -13,10 +13,22 @@ case class CoreParams(
     globalHistoryLength:Int = 10,
     bpdMaxMetaLength:Int = 64,
     numBr:Int = 1,
+    numRAS:Int = 8,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,
-    UBTBParams:Option[MicroBTBParams] = Some(new MicroBTBParams) 
-    // branchPredictor: Function2[BranchPredictionBankResponse, Parameters, Tuple2[Seq[BranchPredictorBank], BranchPredictionBankResponse]] = ((resp_in: BranchPredictionBankResponse, p: Parameters) => (Nil, resp_in))
+    UBTBParams:Option[MicroBTBParams] = Some(new MicroBTBParams) ,
+    btbParams:Option[BTBParams] = Some(new BTBParams),
+    branchPredictor: (BPResp, Parameters) => Tuple2[Seq[BasePredictor], BPResp] =
+        (resp_in: BPResp, p: Parameters) => {
+        val ubtb = Module(new MicroBTBBranchPredictor()(p))
+        val bim  = Module(new BIMBranchPredictor()(p))
+        val preds = Seq(ubtb,bim)
+        preds.map(_.io := DontCare)
+        ubtb.io.resp_in := resp_in
+        bim.io.resp_in  := ubtb.io.resp
+        (preds, bim.io.resp)
+    }
     ) {
+
 }
 
 
@@ -27,11 +39,13 @@ trait HasGRVParameters{
     val XLEN        = CoreParams.XLEN
     val globalHistoryLength = CoreParams.globalHistoryLength
     val bpdMaxMetaLength = CoreParams.bpdMaxMetaLength
+    val numRAS  = CoreParams.numRAS
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
-    // def getBPDComponents(resp_in: BranchPredictionBankResponse, p: Parameters) = {
-    //     CoreParams.branchPredictor(resp_in, p)
-    // }
+    val btbParams:Option[BTBParams] = CoreParams.btbParams
+    def getBPDComponents(resp_in: BPResp, p: Parameters) = {
+        CoreParams.branchPredictor(resp_in, p)
+    }
     //ICache
     val ICacheParams = p(ICacheKey)
     val nSets        = ICacheParams.nSets      
