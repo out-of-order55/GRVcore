@@ -55,10 +55,26 @@ trait HasGRVParameters{
     val blockBytes   = ICacheParams.blockBytes
     val fetchBytes   = ICacheParams.fetchBytes
     val fetchWidth   = blockBytes/(XLEN/8)
-    def fetchIdx(addr: UInt)  = addr >> log2Ceil(fetchBytes)
+    def fetchIdx(addr: UInt)  = addr >> log2Ceil(blockBytes)
+
     
 }
 class BaseConfig extends Config((site, here, up) => {
     case CoreKey => CoreParams()
     case ICacheKey => ICacheParams()
 })
+class TestConfig extends Config(
+    new BaseConfig().alter((site, here, up)=>{
+        case CoreKey => up(CoreKey).copy(
+                branchPredictor = 
+                ((resp_in: BPResp, p: Parameters) => {
+                    val ubtb = Module(new MicroBTBBranchPredictor()(p))
+                    val preds = Seq(ubtb)
+                    preds.map(_.io := DontCare)
+                    ubtb.io.resp_in := resp_in
+                    (preds, ubtb.io.resp)
+            })
+            
+        )
+        case ICacheKey => ICacheParams()
+}))

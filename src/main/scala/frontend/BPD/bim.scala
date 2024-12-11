@@ -53,11 +53,9 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
 
     val data  = Seq.fill(bankNum)(Module(new SRAMHelper(BimnSets,UInt(2.W))))
 
-    // val mems = Seq(("bim", nSets, bankWidth * 2))
-    //处理跨行请求
-    val crossRow        = (!(io.f0_pc(offsetWidth-1,0)===0.U))&s0_valid
+
     val bankoh          = UIntToOH(bankoffset(io.f0_pc))
-    val bankmask        = MaskUpper(bankoh)>>bankoffset(io.f0_pc)
+    val bankmask        = MaskUpper(bankoh)
     val s2_req_rdata    = Reg(Vec(bankNum,UInt(2.W)))
 
 
@@ -77,9 +75,9 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
     val s1_update_meta    = s1_update.bits.meta.asTypeOf(new BIMMeta)
     val s1_update_index   = s1_update_idx
 
-    val s1_update_crossRow        = (!(s1_update.bits.pc(offsetWidth-1,0)===0.U))&s1_update.valid
-    val s1_update_bankoh          = UIntToOH(bankoffset(s1_update.bits.pc))
-    val s1_update_bankmask        = MaskUpper(s1_update_bankoh)
+    // val s1_update_crossRow        = (!(s1_update.bits.pc(offsetWidth-1,0)===0.U))&s1_update.valid
+
+    val s1_update_bankmask        = s1_mask
 
     val wrbypass_idxs    = Reg(Vec(nWrBypassEntries, UInt(log2Ceil(BimnSets).W)))
     val wrbypass         = Reg(Vec(nWrBypassEntries, Vec(bankNum, UInt(2.W))))
@@ -88,8 +86,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
 
     val wrbypass_hits = VecInit((0 until nWrBypassEntries) map { i =>
         !doing_reset &&
-        wrbypass_idxs(i) === s1_update_index(log2Ceil(BimnSets)-1,0)&&
-        (wrbypass_bankmask(i)===s1_update_bankmask)
+        wrbypass_idxs(i) === s1_update_index(log2Ceil(BimnSets)-1,0)
     })
     val wrbypass_hit = wrbypass_hits.reduce(_||_)
     val wrbypass_hit_idx = PriorityEncoder(wrbypass_hits)
@@ -99,18 +96,13 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
         val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
         val wen   = doing_reset || (s1_update.valid && s1_update.bits.is_commit_update)&&
                     s1_update_wmask.reduce(_|_)
-        val idx   = Mux(update_valid,Mux(s1_update_bankmask(w)===1.U,s1_update_index,s1_update_index+1.U),
-                    Mux(s0_valid,Mux(bankmask(w)===1.U,s0_idx,s0_idx+1.U),reset_idx))
+        val idx   = Mux(update_valid,s1_update_index,Mux(s0_valid,s0_idx,reset_idx))
         data(w).io.enable  := wen||s0_valid 
         data(w).io.addr    := idx 
         data(w).io.write   := wen 
         data(w).io.dataIn  := s1_update_wdata(w)
-        val ptr   = (w.U+bankoffset(io.f0_pc))%bankNum.U 
-        for(j <- 0 until bankNum){
-            when(j.U===ptr){
-                s2_req_rdata(w) := RegNext(data(j).io.dataOut)
-            }
-        }
+        s2_req_rdata(w)    := (data(w).io.dataOut)
+
     }
 
     for (w <- 0 until bankNum) {

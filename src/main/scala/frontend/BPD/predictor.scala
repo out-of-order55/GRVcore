@@ -11,12 +11,16 @@ class BranchPrediction(implicit p: Parameters) extends GRVBundle
     val taken           = Bool()
     val is_br           = Bool()
     val is_jal          = Bool()
+    val is_call      = Bool()
+    val is_ret       = Bool()
+    val br_type      = UInt(2.W)
     val predicted_pc    = Valid(UInt(XLEN.W))
 }
 
-class BPReq(implicit p: Parameters) extends GRVBundle
+class BPReq(implicit p: Parameters) extends GRVBundle with HasFrontendParameters
 {
     val pc      = UInt(XLEN.W)
+    val mask  = Input(UInt(fetchWidth.W))
     val ghist   = UInt(globalHistoryLength.W)
 }
 class BranchPredictionBundle(implicit p: Parameters) extends GRVBundle()(p)
@@ -24,7 +28,7 @@ with HasFrontendParameters
 {
     val pc = UInt(XLEN.W)
     val preds = Vec(fetchWidth, new BranchPrediction)
-    val meta = Output(Vec(bankNum, UInt(bpdMaxMetaLength.W)))
+    val meta = Output(UInt(bpdMaxMetaLength.W))
 
 }
 class BPResp(implicit p: Parameters) extends GRVBundle()(p) with HasFrontendParameters
@@ -35,19 +39,25 @@ class BPResp(implicit p: Parameters) extends GRVBundle()(p) with HasFrontendPara
 }
 class BranchPredictionUpdate(implicit p: Parameters) extends GRVBundle with HasFrontendParameters
 {
-    val pc      = UInt(XLEN.W)
-    val meta    = UInt(bpdMaxMetaLength.W)
+    val pc              = UInt(XLEN.W)
+    val meta            = UInt(bpdMaxMetaLength.W)
     val is_mispredict_update = Bool()
-    val ghist   = UInt(globalHistoryLength.W)
-    def is_commit_update = !(is_mispredict_update)
+    val ghist           = UInt(globalHistoryLength.W)
+    def is_commit_update= !(is_mispredict_update)
 
     //找出那条是分支指令（目前仅支持1条分支预测）
     val cfi_idx   = Valid(UInt(log2Ceil(bankNum).W))
     val cfi_taken = Bool()
+    val cfi_type  = UInt(2.W)
+    def cfi_is_br   = cfi_type===1.U
+    def cfi_is_call = cfi_type===2.U
+    def cfi_is_ret  = cfi_type===3.U
     //是否推测更新失败，主要针对ghist
     val br_taken     = Bool()
     val br_mask      = UInt(bankNum.W)
     val is_br        = Bool()
+    val is_call      = Bool()
+    val is_ret       = Bool()
     val is_jal       = Bool()
     val is_jalr      = Bool()
     val target        = UInt(XLEN.W)
@@ -66,7 +76,7 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val io = IO(new Bundle {
         val f0_valid = Input(Bool())
         val f0_pc    = Input(UInt(XLEN.W))
-
+        val f0_mask  = Input(UInt(fetchWidth.W))
         val f1_ghist = Input(UInt(globalHistoryLength.W))
 
 
@@ -87,6 +97,11 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val s1_idx       = RegNext(s0_idx)
     val s2_idx       = RegNext(s1_idx)
     val s3_idx       = RegNext(s2_idx)
+
+    val s0_mask      = io.f0_mask
+    val s1_mask      = RegNext(s0_mask)
+    val s2_mask      = RegNext(s1_mask)
+    val s3_mask      = RegNext(s2_mask)
 
     val s0_valid = io.f0_valid
     val s1_valid = RegNext(s0_valid)
@@ -126,52 +141,49 @@ with HasFrontendParameters
 
     var total_memsize = 0
 
-    val banked_predictors = Module(new Composer)
-    
+    val branch_predictors = Module(new Composer)
 
+    branch_predictors.io.f0_valid := io.f0_req.valid
+    branch_predictors.io.f0_pc    := io.f0_req.bits.pc
+    branch_predictors.io.f0_mask  := io.f0_req.bits.mask
+    branch_predictors.io.f1_ghist := RegNext(io.f0_req.bits.ghist)
+    branch_predictors.io.resp_in  := (0.U).asTypeOf(new BPResp)
 
-
-    banked_predictors.io.f0_valid := io.f0_req.valid
-    banked_predictors.io.f0_pc    := io.f0_req.bits.pc
-    banked_predictors.io.f1_ghist := RegNext(io.f0_req.bits.ghist)
-    banked_predictors.io.resp_in  := (0.U).asTypeOf(new BPResp)
-
-    io.resp.f3.meta := DontCare
-    io.resp.f1.preds    := banked_predictors.io.resp.f1
-    io.resp.f2.preds    := banked_predictors.io.resp.f2
-    io.resp.f3.preds    := banked_predictors.io.resp.f3
-    io.resp.f3.meta(0)  := banked_predictors.io.f3_meta
-    banked_predictors.io.f3_fire := io.f3_fire
-
+    // io.resp.f3.meta := DontCare
+    io.resp.f1.preds    := branch_predictors.io.resp.f1
+    io.resp.f2.preds    := branch_predictors.io.resp.f2
+    io.resp.f3.preds    := branch_predictors.io.resp.f3
+    io.resp.f3.meta     := branch_predictors.io.f3_meta
+    branch_predictors.io.f3_fire := io.f3_fire
 
     io.resp.f1.pc := RegNext(io.f0_req.bits.pc)
     io.resp.f2.pc := RegNext(io.resp.f1.pc)
     io.resp.f3.pc := RegNext(io.resp.f2.pc)
 
-
     io.resp.f1.meta := DontCare
     io.resp.f2.meta := DontCare
 
+    branch_predictors.io.update.bits.meta             := io.update.bits.meta
+
+    branch_predictors.io.update.bits.cfi_idx.bits    := io.update.bits.cfi_idx.bits
+    branch_predictors.io.update.bits.cfi_taken       := io.update.bits.cfi_taken
+    branch_predictors.io.update.bits.cfi_type        := io.update.bits.cfi_type
+    branch_predictors.io.update.bits.br_taken        := io.update.bits.br_taken
+    branch_predictors.io.update.bits.is_br           := io.update.bits.is_br
+    branch_predictors.io.update.bits.is_jal          := io.update.bits.is_jal
+    branch_predictors.io.update.bits.is_jalr         := io.update.bits.is_jalr
+    branch_predictors.io.update.bits.is_call         := io.update.bits.is_call
+    branch_predictors.io.update.bits.is_ret          := io.update.bits.is_ret
+    branch_predictors.io.update.bits.target          := io.update.bits.target
+    branch_predictors.io.update.bits.is_mispredict_update          := io.update.bits.is_mispredict_update
 
 
-    banked_predictors.io.update.bits.meta             := io.update.bits.meta
+    branch_predictors.io.update.valid                 := io.update.valid
+    branch_predictors.io.update.bits.pc               := io.update.bits.pc
+    branch_predictors.io.update.bits.br_mask          := io.update.bits.br_mask
 
-    banked_predictors.io.update.bits.cfi_idx.bits     := io.update.bits.cfi_idx.bits
-    banked_predictors.io.update.bits.cfi_taken        := io.update.bits.cfi_taken
-    banked_predictors.io.update.bits.br_taken        := io.update.bits.br_taken
-    banked_predictors.io.update.bits.is_br            := io.update.bits.is_br
-    banked_predictors.io.update.bits.is_jal           := io.update.bits.is_jal
-    banked_predictors.io.update.bits.is_jalr          := io.update.bits.is_jalr
-    banked_predictors.io.update.bits.target           := io.update.bits.target
-    banked_predictors.io.update.bits.is_mispredict_update          := io.update.bits.is_mispredict_update
-
-
-    banked_predictors.io.update.valid                 := io.update.valid
-    banked_predictors.io.update.bits.pc               := io.update.bits.pc
-    banked_predictors.io.update.bits.br_mask          := io.update.bits.br_mask
-    // banked_predictors.io.update.bits.btb_mispredicts  := io.update.bits.btb_mispredicts
-    banked_predictors.io.update.bits.cfi_idx.valid    := io.update.bits.cfi_idx.valid
-    banked_predictors.io.update.bits.ghist            := io.update.bits.ghist
+    branch_predictors.io.update.bits.cfi_idx.valid    := io.update.bits.cfi_idx.valid
+    branch_predictors.io.update.bits.ghist            := io.update.bits.ghist
 
 
 

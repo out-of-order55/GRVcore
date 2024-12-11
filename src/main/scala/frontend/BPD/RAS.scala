@@ -33,16 +33,16 @@ class RASResp(implicit p: Parameters)extends GRVBundle{
     val br_type = Input(Valid(UInt(2.W)))
     val read_addr = Output(UInt(XLEN.W))
     val write_addr= Input(UInt(XLEN.W))
-    def is_call= br_type.bits===0.U
-    def is_ret= br_type.bits===1.U
+    def is_call= br_type.bits===1.U
+    def is_ret= br_type.bits===2.U
 }
 class RASUpdate(implicit p: Parameters)extends GRVBundle{
     val update_addr      = Input(UInt(XLEN.W))
     val update_type      = Input(Valid(UInt(2.W)))
     val is_commit_update = Input(Bool())
     val is_misspredict   = Input(Bool())
-    def is_call= update_type.bits===0.U
-    def is_ret = update_type.bits===1.U
+    def is_call= update_type.bits===1.U
+    def is_ret = update_type.bits===2.U
 }
 /* 
 RAS首先要有读地址，写地址，更新信号，如果分支预测失败，需要更新RAS，具体的，将commitRAS复制给sepcRAS，指针同样,

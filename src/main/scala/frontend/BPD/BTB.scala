@@ -9,13 +9,17 @@ import freechips.rocketchip.tilelink.TLRationalImp.bundle
 
 
 case class BTBParams(
-    nSets: Int = 128,
-    nWays: Int = 2,
+    nSets:  Int = 128,
+    nWays:  Int = 2,
     offsetSz: Int = 21
 )
 
 
-
+/*
+为每个bank都分配了表项，目前会浪费SRAM，之后可能会做出限制，比如一个fetchpacket，最多存两条taken的分支
+主体逻辑3500
+去掉跨行为2200
+*/
 class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     val BTBnSets      = btbParams.getOrElse(BTBParams()).nSets
     val tagSz         = XLEN - log2Ceil(BTBnSets) - log2Ceil(fetchWidth) - 1
@@ -23,89 +27,98 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     class BTBEntry extends Bundle{
         val br_type = UInt(2.W)
         val offset  = UInt(offsetSz.W)
+        def is_br  = br_type===1.U
+        def is_call= br_type===2.U
+        def is_ret = br_type===3.U
     }
     class BTBMeta extends  Bundle{
         val tag = UInt(tagSz.W)
     }
     class BTBPredMeta extends  Bundle{
-        val hit = UInt(2.W)
+        val hit = Bool()
     }
     val s2_meta           = Wire(new BTBPredMeta)
     override val metaSz   = s2_meta.asUInt.getWidth
 
     val btb = Seq.fill(bankNum)(Module(new SRAMHelper(BTBnSets,new BTBEntry)))
-    val meta = Seq.fill(2)(Module(new SRAMHelper(BTBnSets,new BTBMeta)))//for crossrow access
+    val meta = Module(new SRAMHelper(BTBnSets,new BTBMeta))
 
     val doing_reset = RegInit(true.B)
     val reset_idx = RegInit(0.U(log2Ceil(BTBnSets).W))
     reset_idx := reset_idx + doing_reset
     when (reset_idx === (BTBnSets-1).U) { doing_reset := false.B }
     //S0阶段处理读的信号
-    val crossRow        = (!(io.f0_pc(offsetWidth-1,0)===0.U))&s0_valid
-    val bankoh          = UIntToOH(bankoffset(io.f0_pc))
-    val bankmask        = MaskUpper(bankoh)>>bankoffset(io.f0_pc)
+
 
 
     val s1_update_meta            = s1_update.bits.meta.asTypeOf(new BTBPredMeta)
     val s1_update_index           = s1_update_idx
-    val s1_update_crossRow        = (!(s1_update.bits.pc(offsetWidth-1,0)===0.U))&s1_update.valid
-    val s1_update_bankoh          = UIntToOH(bankoffset(s1_update.bits.pc))
-    val s1_update_bankmask        = MaskUpper(s1_update_bankoh)
-    val s1_update_bankmask_meta        = MaskUpper(s1_update_bankoh)>>bankoffset(s1_update.bits.pc)
+
+
+
 
     val new_offset_value = (s1_update.bits.target.asSInt -
         (s1_update.bits.pc + (s1_update.bits.cfi_idx.bits << 2)).asSInt)
     val s1_update_cfi_idx   = s1_update.bits.cfi_idx.bits
     val s1_update_wbtb_data     = Wire(new BTBEntry)
-    val s1_update_wmeta_data    = Wire(new BTBMeta)
+    // val s1_update_wmeta_data    = Wire(new BTBMeta)
 
-    s1_update_wbtb_data.offset := new_offset_value
+    s1_update_wbtb_data.offset    := new_offset_value.asUInt
+    s1_update_wbtb_data.br_type   := s1_update.bits.cfi_type 
+
     val s1_update_wbtb_mask = (UIntToOH(s1_update_cfi_idx) &
         Fill(bankNum, s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update))
     val s1_update_taken =  s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update
-    val s1_update_wmeta_mask = UInt(2.W)
-    s1_update_wmeta_mask(0) := (!s1_update_meta.hit(0))&s1_update_taken&
-                    (UIntToOH(s1_update_cfi_idx)&s1_update_bankmask_meta)=/=0.U
-    s1_update_wmeta_mask(1) := (!s1_update_meta.hit(1))&s1_update_taken&
-                    (UIntToOH(s1_update_cfi_idx)&s1_update_bankmask_meta)===0.U
+
+
     
-    val s2_req_rdata = Vec(bankNum,new BTBEntry)
-    val s1_btb_meta  = Vec(2,new BTBMeta)
+    val s2_req_rdata = Reg(Vec(bankNum,new BTBEntry))
+
+    val s1_btb_meta  = Wire(new BTBMeta)
+
+    //check hit
+    val s1_hit = s1_btb_meta.tag===(s1_pc)(XLEN-1,XLEN-tagSz)
+    
+    val s2_hit = RegNext(s1_hit)
+
+    s2_meta.hit := s2_hit
+
+    io.f3_meta := RegNext(s2_meta.asUInt)
 /*
 读需要读第一个预测taken的，写需要写实际taken的//一个指令包顶多一个
 */
-    for (w <- 0 until 2) { 
-        val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
 
+        val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
         val idx   = Mux(update_valid,s1_update_index,
                     Mux(s0_valid,s0_idx,reset_idx))
-        meta(w).io.enable  := s1_update_wmeta_mask(w)||s0_valid ||doing_reset
-        meta(w).io.addr    := idx+w.U 
-        meta(w).io.write   := doing_reset||s1_update_wmeta_mask(w)
-        meta(w).io.dataIn  := s1_update.bits.pc(XLEN-1,XLEN-tagSz)
-        val ptr   = (w.U+bankoffset(io.f0_pc))%bankNum.U 
+        val enable = s1_update_taken||s0_valid ||doing_reset
+        val write  = 
+        meta.io.enable      := enable
+        meta.io.addr        := idx
+        meta.io.write       := doing_reset||(s1_update_taken&(!s1_update_meta.hit))
+        meta.io.dataIn.tag  := (s1_update.bits.pc)(XLEN-1,XLEN-tagSz)
+        s1_btb_meta         :=  meta.io.dataOut 
 
-        // for(j <- 0 until bankNum){
-        //     when(j.U===ptr){
-        //         s2_req_rdata(w) := RegNext(btb(j).io.dataOut)
-        //     }
-        // }
-    }
+
     for (w <- 0 until bankNum) { 
         val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
-
-        val idx   = Mux(update_valid,Mux(s1_update_bankmask(w)===1.U,s1_update_index,s1_update_index+1.U),
-                    Mux(s0_valid,Mux(bankmask(w)===1.U,s0_idx,s0_idx+1.U),reset_idx))
+        val idx   = Mux(update_valid,s1_update_index,
+                    Mux(s0_valid,s0_idx,reset_idx))
         btb(w).io.enable  := s1_update_wbtb_mask(w)||s0_valid ||doing_reset
         btb(w).io.addr    := idx 
         btb(w).io.write   := Mux(doing_reset,true.B,s1_update_wbtb_mask(w)) 
         btb(w).io.dataIn  := s1_update_wbtb_data
-        val ptr   = (w.U+bankoffset(io.f0_pc))%bankNum.U 
-        for(j <- 0 until bankNum){
-            when(j.U===ptr){
-                s2_req_rdata(w) := RegNext(btb(j).io.dataOut)
-            }
-        }
+        s2_req_rdata(w)   := btb(w).io.dataOut
+    }
+    // s2_req_rdata := DontCare
+    for(w <- 0 until bankNum){
+        io.resp.f2(w).predicted_pc.bits := s2_req_rdata(w).offset
+        io.resp.f2(w).predicted_pc.valid:= s2_req_rdata(w).br_type=/=0.U
+        io.resp.f2(w).br_type      := s2_req_rdata(w).br_type
+        io.resp.f2(w).is_br        := s2_req_rdata(w).is_br
+        io.resp.f2(w).is_call      := s2_req_rdata(w).is_call
+        io.resp.f2(w).is_ret       := s2_req_rdata(w).is_ret
+        io.resp.f3(w) := RegNext(io.resp.f2(w))
     }
 
 

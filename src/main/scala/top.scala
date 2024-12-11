@@ -13,7 +13,7 @@ class SimTop (implicit p:Parameters)extends Module{
   
   val io = IO(new Bundle {})
 
-  val cache = LazyModule(new CacheTest2())
+  val cache = LazyModule(new CacheTest1())
 
   
   val c = Module(cache.module)
@@ -25,7 +25,7 @@ class SimTop (implicit p:Parameters)extends Module{
 object Elaborate extends App {
 
     println("-----------------Generate Verilog--------------------")
-    implicit val p:Parameters = new BaseConfig() 
+    implicit val p:Parameters = new TestConfig() 
     // val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x20000000, 0x1000)))
     val firtoolOptions = Array("--lowering-options=" + List(
     // make yosys happy

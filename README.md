@@ -22,6 +22,11 @@ GRVCore
 * [ ] add verdi test
 * [ ] add dc test
 
+# 开发记录
+
+之前的看commit
+
+2024/12/11：今天决定把跨行取值的特性取消了，采用mask表示指令有效性，ICache主体逻辑减少一半
 
 # Problem
 
