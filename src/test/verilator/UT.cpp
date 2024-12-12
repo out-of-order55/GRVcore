@@ -14,9 +14,9 @@ typedef struct Br_info
 }Br_info;
 
 Br_info br_info[1000];
-int br_ptr;
+int max_ptr;
 void BR_init(){
-    br_ptr=0;
+
     FILE *file = fopen("/home/gg/GRVCore/br_trace.txt", "r");
     if (file == NULL) {
         perror("Error opening file");
@@ -39,26 +39,48 @@ void BR_init(){
         }
         i++;
     }
-    assert(i==1000);
+    max_ptr=i;
+    // printf("i:%d\n",i);
+    assert(i<=1000);
     fclose(file);
 }
 void UT_Init(){
+    Log("UT init....");
     uint32_t *start = (uint32_t *)sram;
     BR_init();
     for(int i=0;i<0x1000/4;i++){
         *start = i;
         start++;
     }
+    Log("UT init finish");
 }
-extern "C" void Br_check(int* pc,int* target,int* type,int* taken,int* rs1,int* rd,int valid){
-    if(valid){
-        *pc     := br_info[i].pc     ;
-        *target := br_info[i].target ;
-        *type   := br_info[i].type   ;
-        *taken  := br_info[i].taken  ;
-        *rs1    := br_info[i].rs1    ;
-        *rd     := br_info[i].rd     ;
-        br_ptr++;
+extern "C" void Br_check(int* s0_pc,int* pc,int* target,int* br_type,int* taken,int* rs1,
+                int* rd,int valid3,int valid0,int s0_ptr,int s3_ptr){
+    if(valid3){
+        if(s3_ptr==max_ptr-1){
+            printf("finish br %d \n",s3_ptr);
+            #ifdef CONFIG_WAVE_TRECE
+                tfp->close();
+            #endif
+            exit(0);
+        }
+        *pc      = br_info[s3_ptr].pc     ;
+        *target  = br_info[s3_ptr].target ;
+        *br_type = br_info[s3_ptr].type   ;
+        *taken   = br_info[s3_ptr].taken  ;
+        *rs1     = br_info[s3_ptr].rs1    ;
+        *rd      = br_info[s3_ptr].rd     ;
+        
+    }else{
+        *pc      =0;
+        *target  =0;
+        *br_type =0;
+        *taken   =0;
+        *rs1     =0;
+        *rd      =0;
+    }
+    if(valid0){
+        *s0_pc   = br_info[s0_ptr].pc     ;
     }
 }
 extern "C" void SRAM_read(int raddr,int *rdata){
@@ -67,7 +89,7 @@ extern "C" void SRAM_read(int raddr,int *rdata){
 }
 extern "C" void check(int finish, int ret){
     if(finish==1){
-        Log("npc: %s  " ,
+        Log("UT: %s  " ,
             (ret == 0 ? ANSI_FMT("HIT GOOD TRAP", ANSI_FG_GREEN) :
                 ANSI_FMT("HIT BAD TRAP", ANSI_FG_RED)));
         // CLOCK();

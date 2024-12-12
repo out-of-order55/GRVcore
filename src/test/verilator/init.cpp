@@ -345,7 +345,6 @@ void test_f(){
   RESET(12);
   while(1){
     CLOCK();
-
   }
   #ifdef  CONFIG_WAVE_TRECE
   tfp->close();

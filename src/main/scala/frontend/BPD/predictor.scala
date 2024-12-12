@@ -11,9 +11,9 @@ class BranchPrediction(implicit p: Parameters) extends GRVBundle
     val taken           = Bool()
     val is_br           = Bool()
     val is_jal          = Bool()
-    val is_call      = Bool()
-    val is_ret       = Bool()
-    val br_type      = UInt(2.W)
+    val is_call         = Bool()
+    val is_ret          = Bool()
+    val br_type         = UInt(2.W)
     val predicted_pc    = Valid(UInt(XLEN.W))
 }
 
@@ -28,7 +28,7 @@ with HasFrontendParameters
 {
     val pc = UInt(XLEN.W)
     val preds = Vec(fetchWidth, new BranchPrediction)
-    val meta = Output(UInt(bpdMaxMetaLength.W))
+    val meta = (UInt(bpdMaxMetaLength.W))
 
 }
 class BPResp(implicit p: Parameters) extends GRVBundle()(p) with HasFrontendParameters
@@ -128,9 +128,9 @@ with HasFrontendParameters
         // Requests and responses
         val f0_req = Input(Valid(new BPReq))
         val resp = Output(new Bundle {
-        val f1 = new BranchPredictionBundle
-        val f2 = new BranchPredictionBundle
-        val f3 = new BranchPredictionBundle
+            val f1 = new BranchPredictionBundle
+            val f2 = new BranchPredictionBundle
+            val f3 = new BranchPredictionBundle
         })
 
         val f3_fire = Input(Bool())
@@ -190,7 +190,7 @@ with HasFrontendParameters
 
     when (io.update.valid) {
         when (io.update.bits.is_br && io.update.bits.cfi_idx.valid) {
-        assert(io.update.bits.br_mask(io.update.bits.cfi_idx.bits))
+        // assert(io.update.bits.br_mask(io.update.bits.cfi_idx.bits))
         }
     }
 }

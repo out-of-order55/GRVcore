@@ -7,7 +7,7 @@ import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
 
 case class MicroBTBParams(
-    nWays: Int = 8,
+    nWays: Int = 4,
     offsetSz: Int = 21
 )
 
@@ -20,6 +20,10 @@ ubtb 使用寄存器堆搭建不是一个好的选择，面积太大：50000，�
 2：10000
 允许跨行
 改为不允许跨行：4way：9700
+for 295 branches 
+4way  has 149 hits:0.51
+8way  has 244 hits:0.83
+16way has 266 hits:0.90
  */
 class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
 {
@@ -40,8 +44,9 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
     require(isPow2(ubtbnWays))
 
     class MicroBTBEntry extends Bundle {
-        val offset   = SInt(offsetSz.W)
+        val offset= SInt(offsetSz.W)
         val is_br = Bool()
+        val is_jal= Bool()
         val ctr   = UInt(2.W)
     }
 
@@ -80,21 +85,33 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
     val s1_hits     = s1_hit_ohs.reduce(_||_)
     val s1_hit_way  = WireInit(PriorityEncoder(s1_hit_ohs.asUInt))
 
-
+    dontTouch(s1_hit_way)
     for (w <- 0 until bankNum) {
         val entry = btb(s1_hit_way)(w)
         s1_resp(w).valid := s1_valid && s1_hits&&s1_mask(w)
         s1_resp(w).bits  := (s1_pc.asSInt + (w << 2).S + entry.offset).asUInt
         s1_is_br(w)      := s1_resp(w).valid &&  entry.is_br
-        s1_is_jal(w)     := s1_resp(w).valid && !entry.is_br
-        s1_taken(w)      := !entry.is_br || entry.ctr(1)
+        s1_is_jal(w)     := s1_resp(w).valid && entry.is_jal
+        s1_taken(w)      := entry.is_jal || entry.ctr(1)
         
     }
     s1_meta.hits     := s1_hits
+    val hit_cnt = RegInit(0.U(10.W))
+    val total_cnt = RegInit(0.U(10.W))
+    dontTouch(hit_cnt)
+    dontTouch(total_cnt)
+    when(s1_valid&&s1_hits){
+        hit_cnt := hit_cnt +1.U
+    }
+    when(s1_valid){
+        total_cnt := total_cnt +1.U
+    }
     val alloc_way = cnt//不能和hit的way一样
     //如果两个way都命中，直接写入hitway，如果一个命中，就写入hitWay的下一个，如果都没命中，写入allocway和+1
 
-
+    dontTouch(s1_meta)
+    dontTouch(s1_hit_ohs)
+    dontTouch(s1_req_tag)
     s1_meta.write_way := Mux(s1_hits,s1_hit_way,alloc_way)
 
 
@@ -115,24 +132,25 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
     val s1_update_meta      = s1_update.bits.meta.asTypeOf(new MicroBTBPredictMeta)
     val s1_update_write_way = s1_update_meta.write_way
 
-
+    dontTouch(s1_update_write_way)
     val new_offset_value = (s1_update.bits.target.asSInt -
         (s1_update.bits.pc + (s1_update.bits.cfi_idx.bits << 2)).asSInt)
-
     val was_taken = (s1_update.bits.cfi_idx.valid &&
     (s1_update.bits.cfi_taken || s1_update.bits.is_jal))
     val s1_update_wbtb_data     = Wire(new MicroBTBEntry)
     val btb_update_write_way = s1_update_write_way
     val btb_update_idx = (s1_update_cfi_idx)(log2Ceil(bankNum)-1,0)
+    dontTouch(s1_update_wbtb_data)
     s1_update_wbtb_data.offset := new_offset_value
     s1_update_wbtb_data.ctr :=  Mux(!s1_update_meta.hits,
                                             Mux(was_taken, 3.U, 0.U),
                                             bimWrite(btb(btb_update_write_way)(btb_update_idx).ctr, was_taken))
-    s1_update_wbtb_data.is_br:= s1_update.bits.br_mask(btb_update_idx)
+    s1_update_wbtb_data.is_br := s1_update.bits.is_br
+    s1_update_wbtb_data.is_jal:= s1_update.bits.is_jal
     val s1_update_wbtb_mask = (UIntToOH(s1_update_cfi_idx) &
         Fill(bankNum, s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update))
 
-    val s1_update_wmeta_mask = ((s1_update_wbtb_mask | s1_update.bits.br_mask) &
+    val s1_update_wmeta_mask = ((s1_update_wbtb_mask) &
         Fill(bankNum, s1_update.valid && s1_update.bits.is_commit_update))
 
 

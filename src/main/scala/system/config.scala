@@ -57,6 +57,7 @@ trait HasGRVParameters{
     val fetchWidth   = blockBytes/(XLEN/8)
     def fetchIdx(addr: UInt)  = addr >> log2Ceil(blockBytes)
 
+
     
 }
 class BaseConfig extends Config((site, here, up) => {

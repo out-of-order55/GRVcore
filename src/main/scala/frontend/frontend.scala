@@ -8,5 +8,6 @@ import freechips.rocketchip.diplomacy._
 
 trait HasFrontendParameters extends HasICacheParameters{
     override val bankWidth: Int = fetchWidth
-    def bankoffset(addr:UInt) = addr(offsetWidth-1,offsetWidth-bankWidth)
+    def bankoffset(addr:UInt) = addr(offsetWidth-1,offsetWidth-log2Ceil((XLEN/8)))
+    def bankAlign(addr:UInt) =(addr>>bankWidth)<<bankWidth
 }

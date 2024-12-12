@@ -13,11 +13,10 @@ class SimTop (implicit p:Parameters)extends Module{
   
   val io = IO(new Bundle {})
 
-  val cache = LazyModule(new CacheTest1())
+  val bp =Module(new BPTest1())
 
-  
-  val c = Module(cache.module)
-  c.dontTouchPorts()
+  // bp.f3_resp:=DontCare
+  bp.dontTouchPorts()
 
 
 
