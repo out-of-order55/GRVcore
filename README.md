@@ -28,6 +28,10 @@ GRVCore
 
 2024/12/11：今天决定把跨行取值的特性取消了，采用mask表示指令有效性，ICache主体逻辑减少一半
 
+2024/12/12：添加简易的br_test
+
+2024/12/13:继续添加br_test,对ubtb，bim，btb和RAS测试，尽量找出性能bug，最终在简易的add程序实现93%的预测正确率
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

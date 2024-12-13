@@ -1,7 +1,7 @@
 package grvcore
 import chisel3._
 import chisel3.util._
-
+import chisel3.util.random.LFSR
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
@@ -11,8 +11,9 @@ case class MicroBTBParams(
     offsetSz: Int = 21
 )
 
-/* 
-改编自boom的ubtb
+/*
+只预测jal和br：jalr需要将offset扩展到32位
+8way 差不多就能覆盖大部分jal和taken的br（小程序）
 ubtb 使用寄存器堆搭建不是一个好的选择，面积太大：50000，除了存储以外的逻辑大概为1500左右
 16way：50000
 8：27000
@@ -80,11 +81,11 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
     //读mata
     val s1_hit_ohs = VecInit((0 until ubtbnWays) map { w =>
             meta(w).tag === s1_req_tag(tagSz-1,0)
-        })
+    })
 
     val s1_hits     = s1_hit_ohs.reduce(_||_)
     val s1_hit_way  = WireInit(PriorityEncoder(s1_hit_ohs.asUInt))
-
+    dontTouch(s1_mask)
     dontTouch(s1_hit_way)
     for (w <- 0 until bankNum) {
         val entry = btb(s1_hit_way)(w)
@@ -92,23 +93,13 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
         s1_resp(w).bits  := (s1_pc.asSInt + (w << 2).S + entry.offset).asUInt
         s1_is_br(w)      := s1_resp(w).valid &&  entry.is_br
         s1_is_jal(w)     := s1_resp(w).valid && entry.is_jal
-        s1_taken(w)      := entry.is_jal || entry.ctr(1)
+        s1_taken(w)      := entry.is_jal || entry.ctr(1)&&entry.is_br
         
     }
     s1_meta.hits     := s1_hits
-    val hit_cnt = RegInit(0.U(10.W))
-    val total_cnt = RegInit(0.U(10.W))
-    dontTouch(hit_cnt)
-    dontTouch(total_cnt)
-    when(s1_valid&&s1_hits){
-        hit_cnt := hit_cnt +1.U
-    }
-    when(s1_valid){
-        total_cnt := total_cnt +1.U
-    }
-    val alloc_way = cnt//不能和hit的way一样
-    //如果两个way都命中，直接写入hitway，如果一个命中，就写入hitWay的下一个，如果都没命中，写入allocway和+1
-
+//LFSR
+    val alloc_way = LFSR(4)(log2Ceil(ubtbnWays)-1,0)
+    dontTouch(alloc_way)
     dontTouch(s1_meta)
     dontTouch(s1_hit_ohs)
     dontTouch(s1_req_tag)
@@ -148,7 +139,7 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
     s1_update_wbtb_data.is_br := s1_update.bits.is_br
     s1_update_wbtb_data.is_jal:= s1_update.bits.is_jal
     val s1_update_wbtb_mask = (UIntToOH(s1_update_cfi_idx) &
-        Fill(bankNum, s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update))
+        Fill(bankNum, (s1_update.bits.is_br||s1_update.bits.is_jal)&&s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update))
 
     val s1_update_wmeta_mask = ((s1_update_wbtb_mask) &
         Fill(bankNum, s1_update.valid && s1_update.bits.is_commit_update))
@@ -166,5 +157,21 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
         meta(s1_update_write_way).tag   := s1_update_idx
     }
 
+/////////////////////////////////////////////
+    val hit_cnt = RegInit(0.U(10.W))
+    val taken_cnt = RegInit(0.U(10.W))
+    val total_cnt = RegInit(0.U(10.W))
+    dontTouch(hit_cnt)
+    dontTouch(taken_cnt)
+    dontTouch(total_cnt)
+    when(s1_valid&&s1_hits){
+        hit_cnt := hit_cnt +1.U
+    }
+    when(s1_update_valid&&(s1_update_wbtb_data.is_br||s1_update_wbtb_data.is_jal)){
+        total_cnt := total_cnt +1.U
+    }
+    when(s1_update_valid&&(s1_update_wbtb_data.is_br||s1_update_wbtb_data.is_jal)&&(!s1_update.bits.cfi_taken)){
+        taken_cnt := taken_cnt+1.U
+    }
 
 }

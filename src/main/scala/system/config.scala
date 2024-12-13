@@ -13,7 +13,7 @@ case class CoreParams(
     globalHistoryLength:Int = 10,
     bpdMaxMetaLength:Int = 64,
     numBr:Int = 1,
-    numRAS:Int = 8,
+    numRAS:Int = 4,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,
     UBTBParams:Option[MicroBTBParams] = Some(new MicroBTBParams) ,
     btbParams:Option[BTBParams] = Some(new BTBParams),
@@ -64,6 +64,7 @@ class BaseConfig extends Config((site, here, up) => {
     case CoreKey => CoreParams()
     case ICacheKey => ICacheParams()
 })
+//test ubtb
 class TestConfig extends Config(
     new BaseConfig().alter((site, here, up)=>{
         case CoreKey => up(CoreKey).copy(
@@ -74,6 +75,26 @@ class TestConfig extends Config(
                     preds.map(_.io := DontCare)
                     ubtb.io.resp_in := resp_in
                     (preds, ubtb.io.resp)
+            })
+            
+        )
+        case ICacheKey => ICacheParams()
+}))
+//test bim+btb+ras
+class Test1Config extends Config(
+    new BaseConfig().alter((site, here, up)=>{
+        case CoreKey => up(CoreKey).copy(
+                branchPredictor = 
+                ((resp_in: BPResp, p: Parameters) => {
+                    // val ubtb = Module(new MicroBTBBranchPredictor()(p))
+                    val bim  = Module(new BIMBranchPredictor()(p))
+                    val btb  = Module(new BTBBranchPredictor()(p)) 
+                    val preds = Seq(bim,btb)
+                    preds.map(_.io := DontCare)
+                    bim.io.resp_in := resp_in
+                    btb.io.resp_in := bim.io.resp
+                    // resp := btb.io.resp
+                    (preds, btb.io.resp)
             })
             
         )

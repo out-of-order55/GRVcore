@@ -99,6 +99,7 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val s3_idx       = RegNext(s2_idx)
 
     val s0_mask      = io.f0_mask
+    dontTouch(s0_mask)
     val s1_mask      = RegNext(s0_mask)
     val s2_mask      = RegNext(s1_mask)
     val s3_mask      = RegNext(s2_mask)
@@ -110,6 +111,7 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
 
     val s0_pc = io.f0_pc
     val s1_pc = RegNext(s0_pc)
+    val s2_pc = RegNext(s1_pc)
 
     val s0_update     = io.update
     val s0_update_idx = fetchIdx(io.update.bits.pc)

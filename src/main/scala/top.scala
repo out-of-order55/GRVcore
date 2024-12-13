@@ -10,21 +10,15 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
-  
   val io = IO(new Bundle {})
-
   val bp =Module(new BPTest1())
-
   // bp.f3_resp:=DontCare
   bp.dontTouchPorts()
-
-
-
 }
 object Elaborate extends App {
 
     println("-----------------Generate Verilog--------------------")
-    implicit val p:Parameters = new TestConfig() 
+    implicit val p:Parameters = new Test1Config() 
     // val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x20000000, 0x1000)))
     val firtoolOptions = Array("--lowering-options=" + List(
     // make yosys happy

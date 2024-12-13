@@ -17,7 +17,8 @@ case class BIMParams(
 )
 //s2阶段出结果
 /* 
-改编自boom
+
+在只有290条分支的测试中，分支指令为145条（其中有40条处于分支预测的reset阶段），预测成功为45条，约为50%
 之所以要bypass：
 bim在提交时更新，更新时是根据自己携带的meta更新，而不是重新去读bim表，
 如果有两条分支，第一条已经提交并且更新bim，当第二条提交时，此时bim值不是最新的，在bim表中的才是最新的，所以要bypass最新写入的值
@@ -45,7 +46,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
     val s2_meta           = Wire(new BIMMeta)
     override val metaSz   = s2_meta.asUInt.getWidth
 
-    val doing_reset = RegInit(true.B)
+    val doing_reset = RegInit(false.B)//for debug
     val reset_idx = RegInit(0.U(log2Ceil(BimnSets).W))
     reset_idx := reset_idx + doing_reset
     when (reset_idx === (BimnSets-1).U) { doing_reset := false.B }
@@ -64,7 +65,6 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
 
     
     for (w <- 0 until bankNum) {
-
         s2_resp(w)        := s2_valid && s2_req_rdata(w)(1) && !doing_reset
         s2_meta.bims(w)   := s2_req_rdata(w)
     }
@@ -92,15 +92,18 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
     val wrbypass_hit_idx = PriorityEncoder(wrbypass_hits)
 
 
+    val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
+    
+    val idx   = Mux(doing_reset,reset_idx, Mux(update_valid,s1_update_index,Mux(s0_valid,s0_idx,0.U))) 
+    dontTouch(idx)
+    // dontTouch(wen)
+    dontTouch(update_valid)
     for (w <- 0 until bankNum) { 
-        val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
-        val wen   = doing_reset || (s1_update.valid && s1_update.bits.is_commit_update)&&
-                    s1_update_wmask.reduce(_|_)
-        val idx   = Mux(update_valid,s1_update_index,Mux(s0_valid,s0_idx,reset_idx))
+        val wen   = doing_reset || (s1_update.valid && s1_update.bits.is_commit_update)&&s1_update_wmask(w)
         data(w).io.enable  := wen||s0_valid 
         data(w).io.addr    := idx 
         data(w).io.write   := wen 
-        data(w).io.dataIn  := s1_update_wdata(w)
+        data(w).io.dataIn  := Mux(doing_reset,1.U,s1_update_wdata(w))
         s2_req_rdata(w)    := (data(w).io.dataOut)
 
     }

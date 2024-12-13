@@ -15,6 +15,7 @@ class Composer(implicit p: Parameters) extends BasePredictor
     for (c <- components) {
         c.io.f0_valid  := io.f0_valid
         c.io.f0_pc     := io.f0_pc
+        c.io.f0_mask   := io.f0_mask
         c.io.f1_ghist  := io.f1_ghist
         c.io.f3_fire   := io.f3_fire
         if (c.metaSz > 0) {
