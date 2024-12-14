@@ -14,6 +14,8 @@ case class CoreParams(
     bpdMaxMetaLength:Int = 64,
     numBr:Int = 1,
     numRAS:Int = 4,
+    coreWidth:Int = 2,
+    iqueueParams:IQueueParams = new IQueueParams,
     ftqParams:FtqParams = new FtqParams,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,
     UBTBParams:Option[MicroBTBParams] = Some(new MicroBTBParams) ,
@@ -33,15 +35,17 @@ case class CoreParams(
 }
 
 
-trait HasGRVParameters{
+trait HasGRVParameters {
     implicit val p:Parameters
     ///core
     val CoreParams = p(CoreKey)
     val XLEN        = CoreParams.XLEN
+    val coreWidth   = CoreParams.coreWidth
     val globalHistoryLength = CoreParams.globalHistoryLength
     val bpdMaxMetaLength = CoreParams.bpdMaxMetaLength
     val numRAS  = CoreParams.numRAS
     val ftqentries = CoreParams.ftqParams.nEntries
+    val iqentries = CoreParams.iqueueParams.nEntries
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
     val btbParams:Option[BTBParams] = CoreParams.btbParams

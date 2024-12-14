@@ -1,84 +1,33 @@
-package IQueue
-
+package grvcore
 import chisel3._
 import chisel3.util._
 
+import freechips.rocketchip.amba.axi4._
+import freechips.rocketchip.diplomacy._
+import org.chipsalliance.cde.config._
 
-/////////////2W2R/////////
-class WriterIO(size: Int) extends Bundle {
-    val write = Input(Bool())
-    val full = Output(Bool())
-    val din = Input(UInt(size.W))
+case class IQueueParams(
+    nEntries: Int = 16
+)
+
+
+
+
+class IQueueResp(implicit p: Parameters) extends GRVBundle{
+    val uops = Vec(coreWidth,Valid(new MicroOp()))
 }
-
-class ReaderIO(size: Int) extends Bundle {
-    val read = Input(Bool())
-    val empty = Output(Bool())
-    val dout = Output(UInt(size.W))
-}
-class FIFO(size: Int,depth:Int) extends Module {
-
-    val enq = IO(new WriterIO(size))
-    val deq = IO(new ReaderIO(size))
-
-    val dataReg = RegInit(VecInit(Seq.fill(depth)(0.U(size.W))))
-
-    val wptr = RegInit(0.U((log2Ceil(depth)+1).W))
-    val rptr = RegInit(0.U((log2Ceil(depth)+1).W))
-    when(enq.write&&(!enq.full)){
-        dataReg(wptr):= enq.din
-        wptr := wptr+1.U
+/* 
+目前需要2R4W，
+1.使用bank+offset，来写入每个bank和读出每个bank，需要维护woff和roff
+2.使用两个阵列，一个阵列为输入的格式，一个阵列为输出的格式：会引入额外的周期，其中香山和boom使用的是第二种
+ */
+class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameters{
+    val io=IO(new Bundle {
+        val enq   = Flipped(Decoupled(new FetchBundle()))
+        val deq   = new DecoupledIO(new IQueueResp())
+        val clear = Input(Bool())
     }
-    when(deq.read&&(!deq.empty)){
-        
-        rptr := rptr+1.U
-    }
-    deq.dout := dataReg(rptr)
-    enq.full := (wptr((log2Ceil(depth)))===rptr((log2Ceil(depth))))&&(wptr((log2Ceil(depth)-1),0)===rptr((log2Ceil(depth)-1),0))
-    deq.empty := (wptr((log2Ceil(depth)))=/=rptr((log2Ceil(depth))))&&(wptr((log2Ceil(depth)-1),0)===rptr((log2Ceil(depth)-1),0))
-}
-class IQWPort(size: Int) extends Bundle{
-    val wen   = Input(Bool())
-    val wdata = Input(UInt(size.W)) 
-} 
-
-class IQRPort(size: Int) extends Bundle{
-    val ren   = Input(Bool())
-    val rdata = Output(UInt(size.W)) 
-} 
-
-
-class IQueue(size:Int) extends Module{
-
-    val wport0 = IO(new IQWPort(size))
-    val wport1 = IO(new IQWPort(size))
-    val rport0 = IO(new IQRPort(size))
-    val rport1 = IO(new IQRPort(size))
-    val full   = IO(Output(Bool()))
-    val empty  = IO(Output(Bool()))
-//   val bank0 = new Queue()
-    val bank0 = Module(new FIFO(size,4))
-    val bank1 = Module(new FIFO(size,4))
-    val woffset = RegInit(0.U(1.W))
-    val roffset = RegInit(0.U(1.W))
-
-    val wcnt = Mux(wport0.wen&&wport1.wen,2.U,Mux(wport0.wen||wport1.wen,1.U,0.U))
-    val rcnt = Mux(rport0.ren&&rport1.ren,2.U,Mux(rport0.ren||rport1.ren,1.U,0.U))
-
-    woffset := woffset+wcnt
-    roffset := woffset+rcnt
-
-    bank0.enq.din := Mux(woffset===0.U,wport0.wdata,wport1.wdata)
-    bank0.enq.write   := Mux(woffset===0.U,wport0.wen,wport1.wen)
-    bank1.enq.din := Mux(woffset===0.U,wport1.wdata,wport0.wdata)
-    bank1.enq.write   := Mux(woffset===0.U,wport1.wen,wport0.wen)
-
-    
-    bank0.deq.read :=  Mux(roffset===0.U,rport0.ren,rport1.ren)
-    bank1.deq.read :=  Mux(roffset===0.U,rport1.ren,rport0.ren)
-
-    rport0.rdata := Mux(roffset===0.U,bank0.deq.dout,bank1.deq.dout) 
-    rport1.rdata := Mux(roffset===0.U,bank1.deq.dout,bank0.deq.dout) 
-    full := bank0.enq.full&&bank1.enq.full
-    empty:= bank0.deq.empty&&bank1.deq.empty
+    )
+    require (iqentries > fetchWidth)
+    require (iqentries % coreWidth == 0)
 }

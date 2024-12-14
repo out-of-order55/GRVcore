@@ -8,8 +8,8 @@ import freechips.rocketchip.diplomacy._
 ///////////////////////////Parameters//////////////////////
 import org.chipsalliance.cde.config._
 
-abstract class GRVModule(implicit val p:Parameters) extends Module with HasGRVParameters 
-abstract class GRVBundle(implicit val p:Parameters) extends Bundle with HasGRVParameters 
+class GRVModule(implicit val p:Parameters) extends Module with HasGRVParameters with GRVOpConstants
+class GRVBundle(implicit val p:Parameters) extends Bundle with HasGRVParameters with GRVOpConstants
 object CPUAXI4BundleParameters {
     def apply() = AXI4BundleParameters(addrBits = 32, dataBits = 32, idBits = 1)
 }
