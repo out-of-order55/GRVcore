@@ -197,18 +197,14 @@ class Update (Open:Boolean)(implicit p:Parameters)extends GRVModule with HasFron
 
     io.update.valid                     := RegNext(f3_valid,false.B)
     io.update.bits.br_mask              := update_br_mask
-    io.update.bits.br_taken             := update_taken
     io.update.bits.cfi_idx.bits         := update_cfi_idx   
     io.update.bits.cfi_idx.valid        := RegNext(f3_valid,false.B) 
     io.update.bits.cfi_taken            := update_taken
     io.update.bits.cfi_type             := update_br_type
-    io.update.bits.ghist                := 0.U    
-    io.update.bits.is_br                := update_is_br        
-    io.update.bits.is_call              := update_is_call                        
+    io.update.bits.ghist                := 0.U                      
     io.update.bits.is_jal               := update_is_jal                            
     io.update.bits.is_jalr              := update_is_jalr                            
-    io.update.bits.is_mispredict_update := false.B                            
-    io.update.bits.is_ret               := update_is_ret                            
+    io.update.bits.is_mispredict_update := false.B                                                 
     io.update.bits.meta                 := check_resp.meta                        
     io.update.bits.pc                   := bankAlign(io.pc)                    
     io.update.bits.target               := update_target + io.pc                               
@@ -224,7 +220,7 @@ class BPTest1 (implicit p:Parameters)extends GRVModule with HasFrontendParameter
     val ras          = Module(new GRVRAS)
     val update       = Module(new Update(false))
     val trace        = Module(new TraceGen)
-
+    
     // val f3_resp       = IO(Output(new BranchPredictionBundle))
     val s0_vpc       = WireInit(0.U(XLEN.W))
     val s0_valid     = WireInit(false.B)
@@ -289,7 +285,7 @@ class BPTest1 (implicit p:Parameters)extends GRVModule with HasFrontendParameter
     // dontTouch(num)
     val retAddr = ras.io.rasResp.read_addr 
     dontTouch(retAddr)
-    val check_ras = RegNext(retAddr)=/=update.io.update.bits.target&&update.io.update.bits.is_ret
+    val check_ras = RegNext(retAddr)=/=update.io.update.bits.target&&update.io.update.bits.cfi_is_ret
     dontTouch(check_ras)
 
     val pred_pc = Mux(bp.io.resp.f3.preds(s3_idx).is_br,
@@ -304,7 +300,7 @@ class BPTest1 (implicit p:Parameters)extends GRVModule with HasFrontendParameter
     ras.io.rasResp.write_addr    := bankAlign(s3_vpc) + (s3_idx<<2.U) +4.U
     ras.io.rasUpdate.update_type.valid    := update.io.update.valid
     ras.io.rasUpdate.update_type.bits     := update.io.update.bits.cfi_type
-    ras.io.rasUpdate.update_addr          := Mux(update.io.update.bits.is_call,update.io.update.bits.pc+(RegNext(s3_idx<<2))+4.U,0.U)
+    ras.io.rasUpdate.update_addr          := Mux(update.io.update.bits.cfi_is_call,update.io.update.bits.pc+(RegNext(s3_idx<<2))+4.U,0.U)
     ras.io.rasUpdate.is_commit_update     := update.io.update.valid
     ras.io.rasUpdate.is_misspredict       := update.io.update.valid
 

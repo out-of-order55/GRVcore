@@ -110,7 +110,7 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
 
     for (w <- 0 until bankNum) {
         io.resp.f1(w).predicted_pc := s1_resp(w)
-        io.resp.f1(w).is_br        := s1_is_br(w)
+        io.resp.f1(w).br_type      := Mux(s1_is_br(w),1.U,0.U)
         io.resp.f1(w).is_jal       := s1_is_jal(w)
         io.resp.f1(w).taken        := s1_taken(w)
 
@@ -136,10 +136,10 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
     s1_update_wbtb_data.ctr :=  Mux(!s1_update_meta.hits,
                                             Mux(was_taken, 3.U, 0.U),
                                             bimWrite(btb(btb_update_write_way)(btb_update_idx).ctr, was_taken))
-    s1_update_wbtb_data.is_br := s1_update.bits.is_br
+    s1_update_wbtb_data.is_br := s1_update.bits.cfi_is_br
     s1_update_wbtb_data.is_jal:= s1_update.bits.is_jal
     val s1_update_wbtb_mask = (UIntToOH(s1_update_cfi_idx) &
-        Fill(bankNum, (s1_update.bits.is_br||s1_update.bits.is_jal)&&s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update))
+        Fill(bankNum, (s1_update.bits.cfi_is_br||s1_update.bits.is_jal)&&s1_update.bits.cfi_idx.valid && s1_update.valid && s1_update.bits.cfi_taken && s1_update.bits.is_commit_update))
 
     val s1_update_wmeta_mask = ((s1_update_wbtb_mask) &
         Fill(bankNum, s1_update.valid && s1_update.bits.is_commit_update))

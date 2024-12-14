@@ -119,11 +119,11 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     // s2_req_rdata := DontCare
     for(w <- 0 until bankNum){
         io.resp.f2(w).predicted_pc.bits := (s2_req_rdata(w).offset.asSInt + (s2_pc + (PopCount(~s2_mask(bankNum-1,0))<<2)).asSInt).asUInt
-        io.resp.f2(w).predicted_pc.valid:= s2_req_rdata(w).br_type=/=0.U
-        io.resp.f2(w).br_type      := s2_req_rdata(w).br_type
-        io.resp.f2(w).is_br        := s2_req_rdata(w).is_br
-        io.resp.f2(w).is_call      := s2_req_rdata(w).is_call
-        io.resp.f2(w).is_ret       := s2_req_rdata(w).is_ret
+        io.resp.f2(w).predicted_pc.valid:= s2_req_rdata(w).br_type=/=0.U&s2_hit
+        io.resp.f2(w).br_type           := s2_req_rdata(w).br_type
+        // io.resp.f2(w).is_br        := s2_req_rdata(w).is_br
+        // io.resp.f2(w).is_call      := s2_req_rdata(w).is_call
+        // io.resp.f2(w).is_ret       := s2_req_rdata(w).is_ret
         io.resp.f3(w) := RegNext(io.resp.f2(w))
     }
 

@@ -115,7 +115,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
             val was_taken = (
                 s1_update.bits.cfi_idx.valid &&
                 (s1_update.bits.cfi_idx.bits === w.U) &&
-                (s1_update.bits.is_br && s1_update.bits.br_mask(w) && s1_update.bits.br_taken) 
+                (s1_update.bits.cfi_is_br && s1_update.bits.br_mask(w) && s1_update.bits.cfi_taken) 
             )
             val old_bim_value = Mux(wrbypass_hit, wrbypass(wrbypass_hit_idx)(w), s1_update_meta.bims(w))
             s1_update_wmask(w)     := true.B

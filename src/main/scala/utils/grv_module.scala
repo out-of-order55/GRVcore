@@ -39,3 +39,33 @@ class SRAMHelper[T <: Data]( depth: Int,dataType:T)(implicit p: Parameters) exte
     }
 
 }
+
+class DualSRAMHelper[T <: Data]( depth: Int,dataType:T)(implicit p: Parameters) extends GRVModule {
+
+    val mem = SyncReadMem(depth, dataType) 
+    def write(en: Bool, waddr: UInt, dataIn: T): Unit = {
+        when(en) {
+            mem.write(waddr, dataIn)
+        }
+    }
+    def read(en: Bool, raddr: UInt): T = {
+        mem.read(raddr,en)
+    }
+    // val io = IO(new SRAMIO( depth, dataType))  
+    
+    // io.dataOut := mem.read(io.raddr,io.ren)
+    // when(io.wen){
+    //     mem.write(io.waddr,io.dataIn)
+    // }
+    // class SRAMIO[T <: Data]( depth: Int, dataType: T) extends Bundle {
+    //     val wen   = Input(Bool())
+    //     val waddr = Input(UInt(log2Ceil(depth).W))
+    //     val dataIn = Input(dataType)
+
+        
+    //     val ren = Input(Bool())
+    //     val raddr = Input(UInt(log2Ceil(depth).W))
+    //     val dataOut = Output(dataType)
+    // }
+
+}
