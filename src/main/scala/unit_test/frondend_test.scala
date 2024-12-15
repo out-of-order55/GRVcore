@@ -6,6 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
+
 class Update1 (Open:Boolean)(implicit p:Parameters)extends GRVModule with HasFrontendParameters with DontTouch{
     val io = IO(new Bundle {
         //from bp

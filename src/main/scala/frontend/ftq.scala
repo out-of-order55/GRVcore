@@ -5,6 +5,7 @@ import chisel3.util._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
+
 /* 
 
 面积：16项：11000
@@ -87,6 +88,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
         val bpdupdate = Output(Valid(new BranchPredictionUpdate))
         //更新RAS
         val ras_update = Output(new RASUpdate)
+        
     })
 
     val pcs      = Reg(Vec(ftqentries, UInt(XLEN.W)))

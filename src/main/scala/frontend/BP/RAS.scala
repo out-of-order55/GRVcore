@@ -30,7 +30,7 @@ class RASEntry(implicit p: Parameters)extends GRVBundle{
 }
 
 class RASResp(implicit p: Parameters)extends GRVBundle{
-    val br_type = Input(Valid(UInt(2.W)))
+    val br_type   = Input(Valid(UInt(2.W)))
     val read_addr = Output(UInt(XLEN.W))
     val write_addr= Input(UInt(XLEN.W))
     def is_call= br_type.bits===2.U
