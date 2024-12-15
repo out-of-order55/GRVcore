@@ -15,6 +15,7 @@ class FetchBundle(implicit p: Parameters) extends GRVBundle with HasFrontendPara
 {
 //指令信息
     val pc            = UInt(XLEN.W)
+    val mask          = UInt(fetchWidth.W) 
     val insts         = Vec(fetchWidth, Bits(32.W))
 
 
@@ -29,7 +30,7 @@ class FetchBundle(implicit p: Parameters) extends GRVBundle with HasFrontendPara
     val bpd_meta      = UInt(bpdMaxMetaLength.W)
 
     val ftq_idx       = UInt(log2Ceil(ftqentries).W)
-    val mask          = UInt(fetchWidth.W) // mark which words are valid instructions
+    
 
 
     val bpSrc    = UInt(2.W)

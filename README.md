@@ -32,6 +32,10 @@ GRVCore
 
 2024/12/13:继续添加br_test,对ubtb，bim，btb和RAS测试，尽量找出性能bug，最终在简易的add程序实现93%的预测正确率
 
+2024/12/14:添加FTQ，并且编写FTQ测试，以及前端简易测试
+
+2024/12/15：添加IQueue，通过读写测试
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

@@ -11,7 +11,7 @@ import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
   val io = IO(new Bundle {})
-  val bp =Module(new FrontEndTest())
+  val bp =Module(new IQueueTest())
   // bp.f3_resp:=DontCare
   bp.dontTouchPorts()
 }
