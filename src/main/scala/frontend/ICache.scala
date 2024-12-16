@@ -204,7 +204,7 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	val imaster   = IO(AXI4Bundle(CPUAXI4BundleParameters()))
 
 
-	println(f"tag $tagWidth $bankWidth $offsetWidth $indexWidth")
+	// println(f"tag $tagWidth $bankWidth $offsetWidth $indexWidth")
 	// val res_data  = IO(Output(Vec((bankNum),UInt(XLEN.W))))
 	// val finish    = IO(Output(Bool()))
 	
@@ -354,5 +354,14 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	}
 
 	dontTouch(rdata)
+	override def toString: String = GRVString(
+    "==L1-ICache==",
+    "Fetch bytes   : " + fetchBytes,
+    "Block bytes   : " + blockBytes,
+    "Row bits      : " + rowBits,
+    "Word bits     : " + XLEN,
+    "Sets          : " + nSets,
+    "Ways          : " + nWays,
+    "RAMs          : (" +  blockBytes/bankNum + " x " + nSets + ") using " + bankNum + " banks"+"\n")
 }
 

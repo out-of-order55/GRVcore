@@ -148,7 +148,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
         deq_ptr := deq_ptr + 1.U
     }
     //预测失败，恢复写指针
-    when(io.redirect&&io.brupdate.cfi_mispredicted){
+    when(io.redirect||io.brupdate.cfi_mispredicted){
         enq_ptr := deq_ptr + 1.U
     }
     io.bpdupdate.valid := false.B

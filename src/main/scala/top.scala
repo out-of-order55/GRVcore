@@ -11,9 +11,10 @@ import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
   val io = IO(new Bundle {})
-  val bp =Module(new IQueueTest())
+  val m =Module(new Frontend())
+
   // bp.f3_resp:=DontCare
-  bp.dontTouchPorts()
+  // bp.dontTouchPorts()
 }
 object Elaborate extends App {
 
@@ -27,8 +28,9 @@ object Elaborate extends App {
     "disallowPackedArrays",
     "locationInfoStyle=wrapInAtSquareBracket"
     ).reduce(_ + "," + _))
-    // val add = LazyModule(new AdderTestHarness()(Parameters.empty))
-    circt.stage.ChiselStage.emitSystemVerilogFile( new SimTop, args, firtoolOptions)
-  // DifftestModule.finish("Demo", false)
+
+    
+    circt.stage.ChiselStage.emitSystemVerilogFile( new Frontend(), args, firtoolOptions)
+  
 
 }

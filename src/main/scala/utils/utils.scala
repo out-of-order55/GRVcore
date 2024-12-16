@@ -1,7 +1,7 @@
 package grvcore
 import chisel3._
 import chisel3.util._
-
+import org.chipsalliance.cde.config._
 object MaskUpper
 {
   def apply(in: UInt) = {
@@ -31,5 +31,17 @@ object MaskLower
   def apply(in: UInt) = {
     val n = in.getWidth
     (0 until n).map(i => in >> i.U).reduce(_|_)
+  }
+}
+object GRVString
+{
+  /**
+  * Add prefix to BOOM strings (currently only adds the hartId)
+  *
+  * @param strs list of strings
+  * @return String combining the list with the prefix per line
+  */
+  def apply(strs: String*)(implicit p: Parameters) = {
+    strs.map(str =>  str + "\n").mkString("")
   }
 }
