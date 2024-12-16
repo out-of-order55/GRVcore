@@ -314,6 +314,7 @@ void CLOCK(){
     contextp->timeInc(1);
     top->clock = !top->clock;
     top->eval();
+    
     #ifdef  CONFIG_WAVE_TRECE
     tfp->dump(contextp->time());    
     #endif

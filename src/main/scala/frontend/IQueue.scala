@@ -45,6 +45,7 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     val almost_full  = RegNext(enq_ptr+fetchWidth.U===deq_ptr)
     
     for(i <- 0 until fetchWidth){
+        in_entry(i) := DontCare
         in_entry(i).valid       := io.enq.bits.mask(i)
         in_entry(i).bits.ftq_idx:= io.enq.bits.ftq_idx
         in_entry(i).bits.inst   := io.enq.bits.insts(i)
@@ -53,7 +54,8 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
         in_entry(i).bits.is_jalr:= io.enq.bits.is_jalr&&(i.U===io.enq.bits.cfi_idx.bits)
         in_entry(i).bits.pc_off := i.U<<2
         in_entry(i).bits.taken  := io.enq.bits.cfi_taken&&(i.U===io.enq.bits.cfi_idx.bits)
-        in_entry(i).bits.uopc   := DontCare
+        // in_entry(i).bits.uopc   := DontCare
+        
     }   
 
 /////////////////////Write Ibuf///////////////

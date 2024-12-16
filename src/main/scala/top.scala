@@ -3,7 +3,7 @@ import circt.stage._
 import org.chipsalliance.cde.config._
 
 import chisel3._
-import chisel3.{RawModule}
+
 // import chisel3.util._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
@@ -11,7 +11,7 @@ import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
   val io = IO(new Bundle {})
-  val m = LazyModule(new FrontTest)
+  val m = LazyModule(new DecoderTest)
   // val m =Module(new Frontend())
   
   val n= Module(m.module)

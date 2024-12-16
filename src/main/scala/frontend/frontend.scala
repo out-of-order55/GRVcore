@@ -5,7 +5,7 @@ import chisel3.util._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
-import freechips.rocketchip.util.Annotated.resetVector
+// import freechips.rocketchip.util.Annotated.resetVector
 import freechips.rocketchip.util.DontTouch
 
 

@@ -3,6 +3,28 @@
 
 
 uint8_t sram[0x1000];
+char *UT_file = "/home/gg/ysyx-workbench/am-kernels/tests/cpu-tests/build/dummy-riscv32-ysyxsoc.bin";
+static long UT_load_img() {
+    if (UT_file == NULL) {
+    printf("No image is given. Use the default build-in image.\n");
+    return 4096; // built-in image size
+    }
+
+    FILE *fp = fopen(UT_file, "rb");
+    //assert(fp, "Can not open '%s'", img_file);
+
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+
+    Log("The image is %s, size = %ld\n", UT_file, size);
+
+    fseek(fp, 0, SEEK_SET);
+    int ret = fread(sram, size, 1, fp);
+    assert(ret == 1);
+
+    fclose(fp);
+    return size;
+}
 typedef struct Br_info
 {
     int pc      ;
@@ -52,6 +74,7 @@ void UT_Init(){
         *start = i;
         start++;
     }
+    UT_load_img();
     Log("UT init finish");
 }
 extern "C" void Br_check(int* s0_pc,int* pc,int* target,int* br_type,int* taken,int* rs1,

@@ -45,3 +45,19 @@ object GRVString
     strs.map(str =>  str + "\n").mkString("")
   }
 }
+object ImmGen extends RISCVConstants with GRVOpConstants
+{
+
+  def apply(ip: UInt, isel: UInt): SInt = {
+    val sign = ip(LONGEST_IMM_SZ-1).asSInt
+    val i30_20 = Mux(isel === IS_U, ip(18,8).asSInt, sign)
+    val i19_12 = Mux(isel === IS_U || isel === IS_J, ip(7,0).asSInt, sign)
+    val i11    = Mux(isel === IS_U, 0.S,
+                  Mux(isel === IS_J || isel === IS_B, ip(8).asSInt, sign))
+    val i10_5  = Mux(isel === IS_U, 0.S, ip(18,14).asSInt)
+    val i4_1   = Mux(isel === IS_U, 0.S, ip(13,9).asSInt)
+    val i0     = Mux(isel === IS_S || isel === IS_I, ip(8).asSInt, 0.S)
+
+    return Cat(sign, i30_20, i19_12, i11, i10_5, i4_1, i0).asSInt
+  }
+}
