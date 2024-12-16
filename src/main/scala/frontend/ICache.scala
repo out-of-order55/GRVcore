@@ -84,7 +84,29 @@ class CacheMsg(implicit p:Parameters)extends GRVBundle with HasICacheParameters{
     val offset = UInt((offsetWidth).W)
     val bank   = UInt((bankWidth).W)
 }
-
+class ICacheWrapper(implicit p: Parameters) extends LazyModule with HasICacheParameters{
+    val masterNode = AXI4MasterNode(Seq(
+    AXI4MasterPortParameters(
+        masters = Seq(AXI4MasterParameters(
+        name = "ICache")))))
+    lazy val module = new Impl
+    class Impl extends LazyModuleImp(this){
+        val (master, _) = masterNode.out(0)
+        val icache = Module(new ICache)
+        val io     = IO(new ICacheBundle)
+        io <> icache.io
+        icache.imaster <>master
+		override def toString: String = GRVString(
+		"==L1-ICache==",
+		"Fetch bytes   : " + fetchBytes,
+		"Block bytes   : " + blockBytes,
+		"Row bits      : " + rowBits,
+		"Word bits     : " + XLEN,
+		"Sets          : " + nSets,
+		"Ways          : " + nWays,
+		"RAMs          : (" +  blockBytes/bankNum + " x " + nSets + ") using " + bankNum + " banks"+"\n")
+    }
+}
 class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameters{
 	val missmsg      = IO(Input(new MissMsg()))
 	val refillData    = IO(Output(Vec(bankNum,UInt(XLEN.W))))
@@ -354,14 +376,6 @@ class ICache(implicit p:Parameters) extends GRVModule with HasICacheParameters{
 	}
 
 	dontTouch(rdata)
-	override def toString: String = GRVString(
-    "==L1-ICache==",
-    "Fetch bytes   : " + fetchBytes,
-    "Block bytes   : " + blockBytes,
-    "Row bits      : " + rowBits,
-    "Word bits     : " + XLEN,
-    "Sets          : " + nSets,
-    "Ways          : " + nWays,
-    "RAMs          : (" +  blockBytes/bankNum + " x " + nSets + ") using " + bankNum + " banks"+"\n")
+
 }
 

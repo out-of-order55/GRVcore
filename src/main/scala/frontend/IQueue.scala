@@ -96,9 +96,9 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     val almost_empty = numValid<coreWidth.U
     val deqNextPtr   = deq_ptr+coreWidth.U
     val numOut       = PopCount(outputEntries.map(_.valid))
-    val do_deq       = (!almost_empty)&&((numOut===0.U)||numOut===coreWidth.U&&io.deq.ready)
-    io.deq.valid     := (!almost_empty)&&(!io.clear)&&(numOut===coreWidth.U)
-    dontTouch(do_deq)
+    val to_out       = (!almost_empty)&&((numOut===0.U)||numOut===coreWidth.U&&io.deq.ready)//送入output entry
+    io.deq.valid     := (!io.clear)&&(numOut===coreWidth.U)
+    dontTouch(to_out)
     dontTouch(deqNextPtr)
     val outputOH     = (0 until coreWidth).map{i=>
         (0 until iqentries).map{j=>
@@ -108,13 +108,13 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
 
     for(i <- 0 until coreWidth){
         outputEntries(i).bits := Mux1H(outputOH(i),ibuf)
-        outputEntries(i).valid:= Mux(io.clear,false.B,Mux(do_deq,true.B,outputEntries(i).valid))
+        outputEntries(i).valid:= Mux(io.clear,false.B,to_out)
 
         io.deq.bits.uops(i) := outputEntries(i)
     }
     when(io.clear){
         deq_ptr := 0.U
-    }.elsewhen(do_deq){
+    }.elsewhen(to_out){
         deq_ptr := deqNextPtr
     }
 

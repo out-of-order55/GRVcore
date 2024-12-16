@@ -97,24 +97,7 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
     }
 }
 
-class ICacheWrapper(implicit p: Parameters) extends LazyModule with HasICacheParameters{
-    val masterNode = AXI4MasterNode(Seq(
-    AXI4MasterPortParameters(
-        masters = Seq(AXI4MasterParameters(
-        name = "ICache")))))
-    lazy val module = new Impl
-    class Impl extends LazyModuleImp(this) with DontTouch{
-        val (master, _) = masterNode.out(0)
-        val icache = Module(new ICache)
-        val io     = IO(new ICacheBundle)
-        io <> icache.io
-        icache.imaster <>master
-        dontTouch(icache.imaster.ar)
-        dontTouch(icache.imaster.r)
-        dontTouch(icache.io)
-    
-}
-}
+
 /* TODO
 ICache功能验证：
 1.只发送一个请求（对齐访问）:初步测试框架搭建完成

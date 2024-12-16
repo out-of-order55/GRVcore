@@ -55,7 +55,7 @@ class FrontendIO(implicit p: Parameters) extends GRVBundle with HasFrontendParam
 }
 class FrontBundle(implicit p: Parameters) extends GRVBundle with HasFrontendParameters{
     val cpu          = Flipped(new FrontendIO)
-    val icache_master= AXI4Bundle(CPUAXI4BundleParameters())
+    // val icache_master= AXI4Bundle(CPUAXI4BundleParameters())
 }
 class FrontendInfo(implicit p: Parameters) extends GRVBundle with HasFrontendParameters{
     val pc   = UInt(XLEN.W)
@@ -69,7 +69,15 @@ class FrontendInfo(implicit p: Parameters) extends GRVBundle with HasFrontendPar
 =38500
 均没有计算SRAM，其中面积大的都是寄存器堆搭建的RAM或者FIFO
  */
-class Frontend(implicit p: Parameters) extends GRVModule with HasFrontendParameters {
+class FrontEnd(implicit p: Parameters) extends LazyModule{
+    lazy val module = new FrontendImp(this)
+    val icache = LazyModule(new ICacheWrapper)
+    val masterNode = icache.masterNode
+    
+    
+}
+class FrontendImp(val outer: FrontEnd)(implicit p: Parameters) extends LazyModuleImp(outer) 
+with HasFrontendParameters with GRVOpConstants{
     val io = IO(new FrontBundle)
 
 
@@ -86,7 +94,8 @@ class Frontend(implicit p: Parameters) extends GRVModule with HasFrontendParamet
 
 
     val bp     = Module(new BranchPredictor)
-    val icache = Module(new ICache)
+    val icache = outer.icache.module
+    icache.suggestName("ICache")
     val ftq    = Module(new FetchTargetQueue)
     val ibuf   = Module(new IQueue)
     when(start&&(!start1)){
@@ -102,7 +111,6 @@ class Frontend(implicit p: Parameters) extends GRVModule with HasFrontendParamet
 
     icache.io.req.valid     := s0_valid
     icache.io.req.bits.raddr:= bankAlign(s0_vpc)
-    icache.imaster<>io.icache_master
 ////////////////////////s1阶段//////////////////
     val s1_mask      = RegNext(s0_mask)
     val s1_vpc       = RegNext(s0_vpc)
@@ -250,18 +258,18 @@ class Frontend(implicit p: Parameters) extends GRVModule with HasFrontendParamet
     s3_clear      := false.B
     ftq.io.redirect:= false.B
     when(cpu_flush){
-        ibuf.io.clear := true.B
-        s1_clear      := true.B
-        s2_clear      := true.B
-        s3_clear      := true.B
-        s0_valid      := cpu_redirect
-        s0_vpc        := cpu_redirect_pc
+        ibuf.io.clear   := true.B
+        s1_clear        := true.B
+        s2_clear        := true.B
+        s3_clear        := true.B
+        s0_valid        := cpu_redirect
+        s0_vpc          := cpu_redirect_pc
         ftq.io.redirect := cpu_redirect
     }
 
     override def toString: String =
     (GRVString("====Overall Frontend Params====") + "\n"
-    + icache.toString)
+    + icache.toString+bp.toString)
     val str = toString()
     print(str)
 }

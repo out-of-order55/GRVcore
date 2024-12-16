@@ -35,7 +35,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
     require(isPow2(BimnSets))
 
     val nWrBypassEntries = 2
-
+    val mems = Seq(("bim", BimnSets, bankWidth * 2))
     def bimWrite(v: UInt, taken: Bool): UInt = {
         val old_bim_sat_taken  = v === 3.U
         val old_bim_sat_ntaken = v === 0.U
@@ -46,7 +46,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
     val s2_meta           = Wire(new BIMMeta)
     override val metaSz   = s2_meta.asUInt.getWidth
 
-    val doing_reset = RegInit(false.B)//for debug
+    val doing_reset = RegInit(true.B)//for debug
     val reset_idx = RegInit(0.U(log2Ceil(BimnSets).W))
     reset_idx := reset_idx + doing_reset
     when (reset_idx === (BimnSets-1).U) { doing_reset := false.B }

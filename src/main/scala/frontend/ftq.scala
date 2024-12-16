@@ -137,7 +137,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 //////////////////commit logic//////////
     val do_commit_update = io.deq.valid
     
-    
+    val empty            = RegNext(deq_ptr+1.U===enq_ptr)
     val commit_mispred   = RegNext(io.redirect&&io.brupdate.cfi_mispredicted)
     val commit_brInfo    = RegNext(brInfo(deq_ptr))
     val commit_pc        = RegNext(pcs(deq_ptr))
@@ -148,7 +148,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
         deq_ptr := deq_ptr + 1.U
     }
     //预测失败，恢复写指针
-    when(io.redirect||io.brupdate.cfi_mispredicted){
+    when(io.redirect){
         enq_ptr := deq_ptr + 1.U
     }
     io.bpdupdate.valid := false.B

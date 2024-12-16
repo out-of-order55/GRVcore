@@ -41,7 +41,7 @@ class MicroBTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p)
         Mux(old_bim_sat_ntaken && !taken, 0.U,
         Mux(taken, v + 1.U, v - 1.U)))
     }
-
+    val mems = Nil
     require(isPow2(ubtbnWays))
 
     class MicroBTBEntry extends Bundle {

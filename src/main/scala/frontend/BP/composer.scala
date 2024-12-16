@@ -34,6 +34,6 @@ class Composer(implicit p: Parameters) extends BasePredictor
         update_meta = update_meta >> c.metaSz
     }
 
-    // val mems = components.map(_.mems).flatten
+    val mems = components.map(_.mems).flatten
 
 }

@@ -34,6 +34,7 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
         def is_call= br_type===2.U
         def is_ret = br_type===3.U
     }
+    val btbEntrySz = offsetSz + 2
     class BTBMeta extends  Bundle{
         val tag = UInt(tagSz.W)
     }
@@ -43,10 +44,13 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     val s2_meta           = Wire(new BTBPredMeta)
     override val metaSz   = s2_meta.asUInt.getWidth
 
+    val mems = Seq(
+    (f"btb_meta", BTBnSets, bankWidth * metaSz),
+    (f"btb_data", BTBnSets, bankWidth * btbEntrySz))
     val btb = Seq.fill(bankNum)(Module(new SRAMHelper(BTBnSets,new BTBEntry)))
     val meta = Module(new SRAMHelper(BTBnSets,new BTBMeta))
 
-    val doing_reset = RegInit(false.B)//调试置为false
+    val doing_reset = RegInit(true.B)//调试置为false
     val reset_idx = RegInit(0.U(log2Ceil(BTBnSets).W))
     val reset_wbtb_data = Wire(new BTBEntry)
     // val s1_update_wmeta_data    = Wire(new BTBMeta)

@@ -96,7 +96,7 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     })
     io.resp := io.resp_in
     io.f3_meta := 0.U
-
+    val mems: Seq[Tuple3[String, Int, Int]]
     val s0_idx       = fetchIdx(io.f0_pc)
     val s1_idx       = RegNext(s0_idx)
     val s2_idx       = RegNext(s1_idx)
@@ -148,7 +148,14 @@ with HasFrontendParameters
     var total_memsize = 0
 
     val branch_predictors = Module(new Composer)
-
+    val bpdStr = new StringBuilder
+    bpdStr.append(GRVString("==Branch Predictor Memory Sizes==\n"))
+    for ((n, d, w) <- branch_predictors.mems) {
+      bpdStr.append(GRVString(f"$n: $d x $w = ${d * w / 8}B"))
+      total_memsize = total_memsize + d * w / 8
+    }
+    bpdStr.append(GRVString(f"Total bp size: ${total_memsize/1024}KB\n"))
+    override def toString: String = bpdStr.toString
     branch_predictors.io.f0_valid := io.f0_req.valid
     branch_predictors.io.f0_pc    := io.f0_req.bits.pc
     branch_predictors.io.f0_mask  := io.f0_req.bits.mask

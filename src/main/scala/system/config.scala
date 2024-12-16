@@ -106,3 +106,24 @@ class Test1Config extends Config(
         )
         case ICacheKey => ICacheParams()
 }))
+
+class DefauConfig extends Config(
+    new BaseConfig().alter((site, here, up)=>{
+        case CoreKey => up(CoreKey).copy(
+                branchPredictor = 
+                ((resp_in: BPResp, p: Parameters) => {
+                    val ubtb = Module(new MicroBTBBranchPredictor()(p))
+                    val bim  = Module(new BIMBranchPredictor()(p))
+                    val btb  = Module(new BTBBranchPredictor()(p)) 
+                    val preds = Seq(ubtb,bim,btb)
+                    preds.map(_.io := DontCare)
+                    ubtb.io.resp_in:=resp_in
+                    bim.io.resp_in := ubtb.io.resp
+                    btb.io.resp_in := bim.io.resp
+                    // resp := btb.io.resp
+                    (preds, btb.io.resp)
+            })
+            
+        )
+        case ICacheKey => ICacheParams()
+}))
