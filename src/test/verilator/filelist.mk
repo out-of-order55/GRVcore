@@ -15,7 +15,7 @@
 
 #ifneq ($(CONFIG_ITRACE),)
 #CXXSRC = ../csrc/disasm.cc
-CXXFLAGS += $(shell llvm-config --cxxflags) -fPIE
-LIBS += $(shell llvm-config --libs)
+CXXFLAGS += $(shell llvm-config-16 --cxxflags) -fPIE
+LIBS += $(shell llvm-config-16 --libs)
 $(info CONFIG_ITRACE and/or CONFIG_IQUEUE are defined!)
 #endif

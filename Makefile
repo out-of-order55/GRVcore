@@ -141,7 +141,7 @@ run:sim
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
-	@gtkwave $(WORK_DIR)/obj_dir/Vtop.vcd
+	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/obj_dir/Vtop.vcd
 
 
 ###############################VCS############################

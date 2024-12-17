@@ -38,6 +38,8 @@ GRVCore
 
 2024/12/16：前端完成连续指令流测试，可以稳定的取出指令并且送入后端，但由于冲刷前端的一些异常不好设置激励，所以会在译码模块或者执行模块做完联调，译码模块是改造的boom的decode
 
+2024/12/17：完成译码，对gtkwave进行配置，并且加入了translate file（针对inst，uop等信号)
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)
