@@ -38,7 +38,7 @@ GRVCore
 
 2024/12/16：前端完成连续指令流测试，可以稳定的取出指令并且送入后端，但由于冲刷前端的一些异常不好设置激励，所以会在译码模块或者执行模块做完联调，译码模块是改造的boom的decode
 
-2024/12/17：完成译码，对gtkwave进行配置，并且加入了translate file（针对inst，uop等信号)
+2024/12/17：完成译码，对gtkwave进行配置，并且加入了translate file（针对inst，uop等信号),完成rename，不过RAT写的一坨，需要优化逻辑
 
 # Problem
 

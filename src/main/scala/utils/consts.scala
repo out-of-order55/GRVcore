@@ -56,6 +56,7 @@ trait GRVOpConstants
     // val N = BitPat("b0")
     val maxPregSz = 64
     val lregSz    = 5
+    val pregSz    = 6
     val BR   = 1
     val CALL = 2
     val RET  = 3

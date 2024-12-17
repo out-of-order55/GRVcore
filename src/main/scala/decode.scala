@@ -199,7 +199,7 @@ class DecodeUnit(implicit p:Parameters) extends GRVModule
     uop.ldst       := inst(RD_MSB,RD_LSB)
     uop.lrs1       := inst(RS1_MSB,RS1_LSB)
     uop.lrs2       := inst(RS2_MSB,RS2_LSB)
-    uop.lrs3       := inst(RS3_MSB,RS3_LSB)
+
 
     uop.ldst_val   := cs.dst_type =/= RT_X && !(uop.ldst === 0.U && uop.dst_rtype === RT_FIX)
     uop.dst_rtype  := cs.dst_type

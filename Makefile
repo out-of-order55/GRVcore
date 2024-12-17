@@ -112,7 +112,7 @@ clean_v:
 verilog:
 	@echo "---------------- GENERATE VERILOG ----------------"
 	
-# @mkdir -p $(VERILOG_FILE)&&cd $(VERILOG_FILE) &&mkdir -p  rtl
+	@mkdir -p $(VERILOG_FILE)
 	mill  -i  $(PRJ).runMain Elaborate  --target-dir $(VERILOG_FILE)
 # @echo $(GenerateV) $(WORK_DIR)/vsrc
 # @if [ -n "$(GenerateV)" ]; then \

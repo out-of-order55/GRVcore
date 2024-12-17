@@ -45,7 +45,7 @@ class RASUpdate(implicit p: Parameters)extends GRVBundle{
     def is_ret = update_type.bits===3.U
 }
 /* 
-RAS首先要有读地址，写地址，更新信号，如果分支预测失败，需要更新RAS，具体的，将commitRAS复制给sepcRAS，指针同样,
+RAS首先要有读地址，写地址，更新信号，如果分支预测失败，需要更新RAS，具体的，将commitRAS复制给specRAS，指针同样,
 RAS在s0阶段更新，s2阶段读出或者写入
 面积4000
  */
@@ -58,10 +58,10 @@ class GRVRAS(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     val commit_ras = Reg(Vec(numRAS, new RASEntry))
     val commit_ptr = RegInit(0.U(log2Ceil(numRAS).W))
 
-    val sepc_ptr   = RegInit(0.U(log2Ceil(numRAS).W))
-    val sepc_ras   = Reg(Vec(numRAS, new RASEntry))
+    val spec_ptr   = RegInit(0.U(log2Ceil(numRAS).W))
+    val spec_ras   = Reg(Vec(numRAS, new RASEntry))
 
-    val is_sepc_recursion = io.rasResp.write_addr===sepc_ras(commit_ptr-1.U).stack+1.U
+    val is_spec_recursion = io.rasResp.write_addr===spec_ras(commit_ptr-1.U).stack+1.U
     val is_update_recursion =  io.rasUpdate.update_addr===commit_ras(commit_ptr-1.U).stack
     val call_update_ctr = io.rasUpdate.is_call&is_update_recursion
     val ret_update_ctr  = io.rasUpdate.is_ret&commit_ras(commit_ptr-1.U).ctr=/=0.U
@@ -79,52 +79,52 @@ class GRVRAS(implicit p: Parameters) extends GRVModule with HasFrontendParameter
             for(i <- 0 until numRAS){
                 when(call_update_ctr){
                     when(i.U===commit_ptr-1.U){
-                        sepc_ras(commit_ptr-1.U).ctr := commit_ras(commit_ptr-1.U).ctr + 1.U
+                        spec_ras(commit_ptr-1.U).ctr := commit_ras(commit_ptr-1.U).ctr + 1.U
                     }.otherwise{
-                        sepc_ras(i) := commit_ras(i)
+                        spec_ras(i) := commit_ras(i)
                     }
                     
                 }.otherwise{
                     when(i.U===commit_ptr){
-                        sepc_ras(i).stack := io.rasUpdate.update_addr
+                        spec_ras(i).stack := io.rasUpdate.update_addr
                     }
                 }
             }
-            sepc_ptr := Mux(call_update_ctr,commit_ptr,commit_ptr + 1.U)
+            spec_ptr := Mux(call_update_ctr,commit_ptr,commit_ptr + 1.U)
         }.elsewhen(io.rasUpdate.is_ret){
             for(i <- 0 until numRAS){
                 when(ret_update_ctr){
                     when(i.U===commit_ptr-1.U){
-                        sepc_ras(i).ctr := commit_ras(i).ctr -1.U
+                        spec_ras(i).ctr := commit_ras(i).ctr -1.U
                     }
                 }
             }
-            sepc_ptr := Mux(ret_update_ctr,commit_ptr,commit_ptr-1.U)
+            spec_ptr := Mux(ret_update_ctr,commit_ptr,commit_ptr-1.U)
         }.otherwise{
             for(i <- 0 until numRAS){
-                sepc_ras(i) := commit_ras(i)
+                spec_ras(i) := commit_ras(i)
             }
-            sepc_ptr := commit_ptr
+            spec_ptr := commit_ptr
         }
     }.elsewhen(io.rasResp.br_type.valid){
         when(io.rasResp.is_call){
-            when(is_sepc_recursion){
-                sepc_ras(sepc_ptr-1.U).ctr   := sepc_ras(sepc_ptr-1.U).ctr + 1.U
+            when(is_spec_recursion){
+                spec_ras(spec_ptr-1.U).ctr   := spec_ras(spec_ptr-1.U).ctr + 1.U
                 
             }.otherwise{
-                sepc_ras(sepc_ptr).stack := io.rasResp.write_addr
-                sepc_ptr := sepc_ptr + 1.U
+                spec_ras(spec_ptr).stack := io.rasResp.write_addr
+                spec_ptr := spec_ptr + 1.U
             }
         }
         when(io.rasResp.is_ret){
-            when(sepc_ras(sepc_ptr-1.U).ctr=/=0.U){
-                sepc_ras(sepc_ptr).ctr :=  sepc_ras(sepc_ptr).ctr - 1.U
+            when(spec_ras(spec_ptr-1.U).ctr=/=0.U){
+                spec_ras(spec_ptr).ctr :=  spec_ras(spec_ptr).ctr - 1.U
             }.otherwise{
-                sepc_ptr := sepc_ptr + 1.U
+                spec_ptr := spec_ptr + 1.U
             }
         }
     }
-    io.rasResp.read_addr := Mux(io.rasResp.is_ret&io.rasResp.br_type.valid,sepc_ras(sepc_ptr-1.U).stack,0.U)
+    io.rasResp.read_addr := Mux(io.rasResp.is_ret&io.rasResp.br_type.valid,spec_ras(spec_ptr-1.U).stack,0.U)
     
     dontTouch(is_update_recursion)
     when(io.rasUpdate.update_type.valid&&io.rasUpdate.is_commit_update){

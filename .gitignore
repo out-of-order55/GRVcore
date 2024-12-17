@@ -13,7 +13,7 @@
 !.gitignore
 !.gitmodules
 !README.md
-
+!config/.gtkwaverc
 build/
 obj_dir/
 out/

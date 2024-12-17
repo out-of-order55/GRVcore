@@ -39,15 +39,15 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     // val stq_idx          = UInt(stqAddrSz.W)
     // val rxq_idx          = UInt(log2Ceil(numRxqEntries).W)
 
-    val pdst             = UInt(maxPregSz.W)
-    val prs1             = UInt(maxPregSz.W)
-    val prs2             = UInt(maxPregSz.W)
+    val pdst             = UInt(pregSz.W)
+    val prs1             = UInt(pregSz.W)
+    val prs2             = UInt(pregSz.W)
 
 
     val prs1_busy        = Bool()
     val prs2_busy        = Bool()
 
-    val stale_pdst       = UInt(maxPregSz.W)
+    val old_pdst       = UInt(pregSz.W)
     val exception        = Bool()
     val exc_cause        = UInt(XLEN.W)         
     val bypassable       = Bool()                     
@@ -68,7 +68,6 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     val ldst             = UInt(lregSz.W)
     val lrs1             = UInt(lregSz.W)
     val lrs2             = UInt(lregSz.W)
-    val lrs3             = UInt(lregSz.W)
 
     val ldst_val         = Bool()              
     val dst_rtype        = UInt(2.W)

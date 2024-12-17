@@ -15,6 +15,8 @@ case class CoreParams(
     numBr:Int = 1,
     numRAS:Int = 4,
     coreWidth:Int = 2,
+    numLregs:Int  = 32,
+    numPregs:Int  = 64,
     iqueueParams:IQueueParams = new IQueueParams,
     ftqParams:FtqParams = new FtqParams,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,
@@ -41,6 +43,8 @@ trait HasGRVParameters {
     val CoreParams = p(CoreKey)
     val XLEN        = CoreParams.XLEN
     val coreWidth   = CoreParams.coreWidth
+    val numLregs    = CoreParams.numLregs
+    val numPregs    = CoreParams.numPregs
     val globalHistoryLength = CoreParams.globalHistoryLength
     val bpdMaxMetaLength = CoreParams.bpdMaxMetaLength
     val numRAS  = CoreParams.numRAS

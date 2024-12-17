@@ -11,11 +11,11 @@ import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
   val io = IO(new Bundle {})
-  val m = LazyModule(new DecoderTest)
-  // val m =Module(new Frontend())
+  // val m = LazyModule(new DecoderTest)
+  val m =Module(new FreeListTest())
   
-  val n= Module(m.module)
-  n.dontTouchPorts()
+  // val n= Module(m.module)
+  // n.dontTouchPorts()
   // bp.f3_resp:=DontCare
   // bp.dontTouchPorts()
 }
@@ -33,7 +33,7 @@ object Elaborate extends App {
     ).reduce(_ + "," + _))
 
     
-    circt.stage.ChiselStage.emitSystemVerilogFile( new SimTop(), args, firtoolOptions)
+    circt.stage.ChiselStage.emitSystemVerilogFile( new RenameStage(), args, firtoolOptions)
   
 
 }
