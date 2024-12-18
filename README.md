@@ -18,8 +18,8 @@ GRVCore
 * [X] create chisel env
 * [X] add DPIC test
 * [X] add wave test
-* [ ] add vcs test
-* [ ] add verdi test
+* [X] add vcs test
+* [X] add verdi test
 * [ ] add dc test
 
 # 开发记录
@@ -39,6 +39,8 @@ GRVCore
 2024/12/16：前端完成连续指令流测试，可以稳定的取出指令并且送入后端，但由于冲刷前端的一些异常不好设置激励，所以会在译码模块或者执行模块做完联调，译码模块是改造的boom的decode
 
 2024/12/17：完成译码，对gtkwave进行配置，并且加入了translate file（针对inst，uop等信号),完成rename，不过RAT写的一坨，需要优化逻辑
+
+2024/12/18：完成lrename测试，在C端写了软件的rename，通过difftest来对比重命名错误，目前软件端的重命名不支持配置,对RAT进行优化，将面积从13000降为9100
 
 # Problem
 

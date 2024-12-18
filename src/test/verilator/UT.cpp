@@ -1,6 +1,6 @@
 #include <init.h>
 #include <GlobalVarible.h>
-
+#include <array>
 
 uint8_t sram[0x1000];
 char *UT_file = "/home/gg/ysyx-workbench/am-kernels/tests/cpu-tests/build/dummy-riscv32-ysyxsoc.bin";
@@ -111,6 +111,7 @@ extern "C" void SRAM_read(int raddr,int *rdata){
     *rdata = *((uint32_t *)(sram+raddr));
 }
 extern "C" void check(int finish, int ret){
+
     if(finish==1){
         Log("UT: %s  " ,
             (ret == 0 ? ANSI_FMT("HIT GOOD TRAP", ANSI_FG_GREEN) :
@@ -121,4 +122,102 @@ extern "C" void check(int finish, int ret){
         #endif
         exit(0);
     }
+}
+#define coreWidth 2
+//lrs1是一个cat（rs1_0，rs1_1），其他同理
+uint64_t freelist = (~0x1);
+int rat[32];
+int find_arr[coreWidth];
+void find1(){
+    int n=0;
+    uint64_t list = freelist;
+    for(int i=0;i<64;i++){
+        if(n==coreWidth){
+            break;
+        }
+        if((list>>i)&0x1){
+            find_arr[n]=i;
+            uint64_t mask = (~((uint64_t)1<<i));
+            list = list&mask;
+            n++;
+        }
+    }
+}
+
+extern "C" void softRename(int reqs,int lrs1s,int lrs2s,int ldsts,int* old_pdsts,int* prs1s,int* prs2s,int* pdsts){
+    uint64_t lrs1[coreWidth],lrs2[coreWidth],ldst[coreWidth],
+    prs1[coreWidth],prs2[coreWidth],pdst[coreWidth],req[coreWidth],old_pdst[coreWidth];
+
+    for(int i=0;i<coreWidth;i++){
+        lrs1[i] = (lrs1s&(0x1f<<(5*i)))>>(5*i);
+        lrs2[i] = (lrs2s&(0x1f<<(5*i)))>>(5*i);
+        ldst[i] = (ldsts&(0x1f<<(5*i)))>>(5*i);
+        req[i]  = (reqs&(1<<i))>>i;
+    }
+    //req freelist
+    find1();
+    for(int i=0;i<coreWidth;i++){
+        pdst[i] = find_arr[i];
+        if(req[i]&&(ldst[i]!=0)){
+            uint64_t mask = (~((uint64_t)1<<pdst[i]));
+            freelist&=mask;
+            printf("alloc ID %d pdst %ld freelist %lx %lx\n",i,pdst[i],freelist,mask);
+        }
+    }
+
+    //req rat
+    for(int i=0;i<coreWidth;i++){
+        prs1[i]=rat[lrs1[i]];
+        prs2[i]=rat[lrs2[i]];
+        old_pdst[i] =rat[ldst[i]];
+        for(int j=0;j<i;j++){
+            if(ldst[j]==lrs1[i]){
+                //printf("rs1 Bypass(%d) (%d->%d)\n",ldst[j],j,i);
+                prs1[i]=pdst[j];
+            }
+            if(ldst[j]==lrs2[i]){
+                //printf("rs2 Bypass(%d) (%d->%d)\n",ldst[j],j,i);
+                prs2[i]=pdst[j];
+            }
+            if(ldst[j]==ldst[i]){
+                //printf("dst Bypass(%d) (%d->%d)\n",ldst[j],j,i);
+                old_pdst[i] = pdst[j];
+            }
+        }
+    }
+    //remap rat
+    for(int i=0;i<coreWidth;i++){
+        bool wen =true;
+        for(int j=i+1;j<coreWidth;j++){
+            if(ldst[j]==ldst[i]){
+                wen=false;
+            }
+        }
+        if(wen&req[i]){
+            //printf("write map (%d -> %d)\n",ldst[i],pdst[i]);
+            rat[ldst[i]] = pdst[i];
+        }
+    }
+    int res_old_dst,res_pdst,res_prs1,res_prs2=0;
+    for(int i=coreWidth-1;i>=0;i--){
+        res_old_dst+=old_pdst[i];
+        res_old_dst=res_old_dst<<(6*i);
+        res_pdst += pdst[i];
+        res_pdst=res_pdst<<(6*i);
+
+        res_prs1 += prs1[i];
+        res_prs1=res_prs1<<(6*i);
+        res_prs2 += prs2[i];
+        res_prs2=res_prs2<<(6*i);
+    }
+    if(reqs){
+        for(int i=0;i<coreWidth;i++){
+            printf("req %d %d ID %d prs1 %ld prs2 %ld pdst %ld old_pdst %ld\n",req[i],reqs,i,
+            prs1[i],prs2[i],pdst[i],old_pdst[i]);
+        }
+    }
+    *old_pdsts=res_old_dst;
+    *pdsts=res_pdst;
+    *prs1s=res_prs1;
+    *prs2s=res_prs2;
 }

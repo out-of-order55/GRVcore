@@ -41,22 +41,25 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
     val ldst      = WireInit(VecInit(io.dec_uops.bits.map(_.ldst)))
     val ldst_val  = WireInit(VecInit(io.dec_uops.bits.map(_.ldst_val)))
     //read
-    dec_fire     := io.dec_uops.fire
-    dontTouch(dec_fire)
+    
     
     //不加redirect信号是因为送入dis的uop遇到redirect会无效
-    dec_ready    := io.dis_uops.ready&&(!freelist.io.empty)
+    dec_ready    := io.dis_uops.ready&&((!freelist.io.empty)&&(!io.redirect))
+    dontTouch(dec_ready)
     io.dec_uops.ready := dec_ready
+    dec_fire     := io.dec_uops.fire
+    dontTouch(dec_fire)
     for(i <- 0 until coreWidth){
         //req
         rat.io.reqs(i).lrs1          := lrs1(i)
         rat.io.reqs(i).lrs2          := lrs2(i)
         rat.io.reqs(i).ldst          := ldst(i)
 
-        freelist.io.reqs(i)          := ldst_val(i)
+        freelist.io.reqs(i)          := ldst_val(i)&&dec_fire
         
         //remap
-        rat.io.remapReqs(i).valid    := freelist.io.alloc_pregs(i).valid
+//to handle WAW
+        rat.io.remapReqs(i).valid    := (freelist.io.alloc_pregs(i).valid)
         rat.io.remapReqs(i).bits.ldst:= ldst(i)
         rat.io.remapReqs(i).bits.pdst:= freelist.io.alloc_pregs(i).bits
         //to dis
@@ -75,7 +78,7 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
     freelist.io.redirect_freelist := rat.io.redirect_freelist
 
 
-    io.dis_uops.valid := (!io.redirect)&(!freelist.io.empty)
+    io.dis_uops.valid := (!io.redirect)&(!freelist.io.empty)&&io.dec_uops.valid
     io.dis_uops.bits  := uops
 
 

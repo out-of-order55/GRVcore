@@ -39,7 +39,8 @@ class FreeList(implicit p: Parameters) extends GRVModule
 // 初始化freelist,最低位0,表示0号寄存器
 	val free_list = RegInit(UInt(numPregs.W),~(1.U(numPregs.W)))
 
-	val empty			= PopCount(free_list)<=coreWidth.U
+	val empty			= WireInit(false.B)
+	empty:=PopCount(free_list)<=coreWidth.U
 
 	dontTouch(empty)
 

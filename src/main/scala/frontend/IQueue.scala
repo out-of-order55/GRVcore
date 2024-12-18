@@ -38,12 +38,12 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     val outputEntries = RegInit(VecInit.fill(coreWidth)(0.U.asTypeOf(Valid(new MicroOp))))
 
     val in_entry = Wire(Vec(fetchWidth,Valid(new MicroOp())))
+    val iqSz =  log2Ceil(iqentries+1)-1
+    val enq_ptr  = RegInit(0.U(log2Ceil(iqentries+1).W))
+    val deq_ptr  = RegInit(0.U(log2Ceil(iqentries+1).W))
 
-    val enq_ptr  = RegInit(0.U(log2Ceil(iqentries).W))
-    val deq_ptr  = RegInit(0.U(log2Ceil(iqentries).W))
-
-    val almost_full  = RegNext(enq_ptr+fetchWidth.U===deq_ptr)
-    
+    val almost_full  = RegNext(enq_ptr+fetchWidth.U===deq_ptr(iqSz-1,0))
+    dontTouch(almost_full)
     for(i <- 0 until fetchWidth){
         in_entry(i) := DontCare
         in_entry(i).valid       := io.enq.bits.mask(i)
@@ -59,21 +59,30 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     }   
 
 /////////////////////Write Ibuf///////////////
-    val numValid = Mux(enq_ptr>=deq_ptr,enq_ptr-deq_ptr,iqentries.U-(deq_ptr-enq_ptr))
-    val full = Mux(enq_ptr>deq_ptr,(enq_ptr+numValid>deq_ptr)&&(enq_ptr>enq_ptr+numValid),(enq_ptr+numValid>deq_ptr))
-
-    dontTouch(full)
-
-    io.enq.ready := (!full)&(!io.clear)
+    val full = WireInit(false.B)
     val numEnq = Mux(io.enq.valid,PopCount(io.enq.bits.mask),0.U)
+    dontTouch(numEnq)
     val enqNextPtr = enq_ptr + numEnq
     val do_enq     = io.enq.fire&&(!io.clear)
     dontTouch(do_enq)
     dontTouch(enqNextPtr)
+    val numValid = WireInit(0.U((iqSz+1).W))
+    dontTouch(numValid)
+    numValid := Mux((enq_ptr>=deq_ptr),enq_ptr-deq_ptr,iqentries.U-(deq_ptr-enq_ptr))
+        // Mux(enq_ptr>=deq_ptr,enq_ptr-deq_ptr,iqentries.U-(deq_ptr-enq_ptr))
+    //满的判断需要不仅在本周期判断：也要在上周期判断，然后寄存下来到本周期
+    
+    full := (enq_ptr(iqSz)=/=deq_ptr(iqSz)&&(numEnq+enq_ptr)(iqSz-1,0)>deq_ptr(iqSz-1,0))||
+    numValid===iqentries.U
+    // assert(numValid>iqentries.U,"IQ overflow")
+    dontTouch(full)
+
+    io.enq.ready := (!full)&(!io.clear)
+
 
 
     val enq_idxs = VecInit.tabulate(fetchWidth)(i => PopCount(io.enq.bits.mask.asBools.take(i)))
-    val enq_offset = VecInit(enq_idxs.map(_+enq_ptr))
+    val enq_offset = VecInit(enq_idxs.map(_+enq_ptr(iqSz-1,0)))
     dontTouch(enq_idxs)
     dontTouch(enq_offset)
     for(i <- 0 until fetchWidth){
@@ -98,19 +107,27 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     val almost_empty = numValid<coreWidth.U
     val deqNextPtr   = deq_ptr+coreWidth.U
     val numOut       = PopCount(outputEntries.map(_.valid))
-    val to_out       = (!almost_empty)&&((numOut===0.U)||numOut===coreWidth.U&&io.deq.ready)//送入output entry
+    val to_out       = (!io.clear)&&(!almost_empty)&&((numOut===0.U)||numOut===coreWidth.U&&io.deq.fire)//送入output entry
     io.deq.valid     := (!io.clear)&&(numOut===coreWidth.U)
     dontTouch(to_out)
     dontTouch(deqNextPtr)
     val outputOH     = (0 until coreWidth).map{i=>
         (0 until iqentries).map{j=>
-            j.U===i.U+deq_ptr
+            j.U===i.U+deq_ptr(iqSz-1,0)
         }
     }
+/* 
+1.outputEntries有数据，dec准备接受，如果ibuf还有数据，就true否则false
 
+2.outputEntries有数据，dec不准备接受：需要保存状态
+3.outputEntries无数据，ibuf有数据，将数据写入
+ */
     for(i <- 0 until coreWidth){
-        outputEntries(i).bits := Mux1H(outputOH(i),ibuf)
-        outputEntries(i).valid:= Mux(io.clear,false.B,to_out)
+        outputEntries(i).bits := Mux(!io.deq.fire&&numOut===coreWidth.U,outputEntries(i).bits ,
+                        Mux1H(outputOH(i),ibuf))
+        outputEntries(i).valid:= Mux(io.clear,false.B,
+                                Mux(!io.deq.fire&&numOut===coreWidth.U,outputEntries(i).valid,
+                                Mux((io.deq.fire||numOut===0.U)&&(!almost_empty),true.B,false.B)))
 
         io.deq.bits.uops(i) := outputEntries(i)
     }
