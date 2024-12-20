@@ -61,3 +61,23 @@ object ImmGen extends RISCVConstants with GRVOpConstants
     return Cat(sign, i30_20, i19_12, i11, i10_5, i4_1, i0).asSInt
   }
 }
+class Compactor[T<:Data](n:Int,k:Int,gen:T) extends  Module{
+  val io = IO(new Bundle{
+    val in  = Vec(n, Flipped(DecoupledIO(gen)))
+    val out = Vec(k,         DecoupledIO(gen))
+  })
+  if(n==k){
+    io.in<>io.out
+  }else{
+    val sels = VecInit.tabulate(n)((io.in.map(_.valid).scan(1.U(k.W)) ((a,b)=>Mux(b.asBool,(a<<1)(k-1,0),a))))
+    val selsOH = Transpose(VecInit(sels.map{i=>VecInit(i.asBools)})).map{col=>
+      (col zip io.in.map(_.valid)).map{case(a,b)=>a&&b}
+    }
+    val in_readys  = sels.map{row=>VecInit((row.asBools zip io.out.map(_.ready)).map{case(c,r)=>(c&&r)})}
+    val out_valids = selsOH.map(col=>col.reduce(_||_))
+    val out_datas  = selsOH.map{s=>Mux1H(s,io.in.map(_.bits))}
+    in_readys zip io.in foreach{case(c,r)=>r.ready := c}
+    out_valids zip out_datas zip io.out foreach{case((v,d),o)=> o.valid := v;o.bits:=d} 
+  }
+
+}

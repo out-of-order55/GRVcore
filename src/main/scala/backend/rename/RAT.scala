@@ -102,7 +102,7 @@ class RAT(implicit p: Parameters) extends GRVModule{
         rat := Mux(io.redirect,
                 Mux(commit_wenOH.reduce(_||_),commitData,com_rat),
                 Mux(spec_wenOH.reduce(_||_),remapData,rat))
-        com_rat := Mux(commit_wenOH.reduce(_||_),commitData,rat)
+        com_rat := Mux(commit_wenOH.reduce(_||_),commitData,com_rat)
     }
     // val 
     for(i <- 0 until coreWidth){

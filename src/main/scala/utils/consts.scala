@@ -74,6 +74,14 @@ trait GRVOpConstants
     val FU_I2F = 256.U(FUC_SZ.W)
     val FU_F2I = 512.U(FUC_SZ.W)
 
+    /*     
+    目前flush仅仅只有3种，需要refetch只有load/store违例
+     */
+    val FLUSH_SZ      = 3
+    val FLUSH_EXC     = 1.U(FLUSH_SZ.W)
+    val FLUSH_REFETCH = 2.U(FLUSH_SZ.W)
+    val FLUSH_MISPRED = 4.U(FLUSH_SZ.W)
+
     val IQT_SZ  = 3
     val IQT_INT = 1.U(IQT_SZ.W)
     val IQT_MEM = 2.U(IQT_SZ.W)

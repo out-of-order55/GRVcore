@@ -55,6 +55,9 @@ class FreeListTest (implicit  p:Parameters) extends GRVModule{
         check.io.ret := true.B
     }
 }
+/* 目前测试均是在没有异常的情况下的测试
+对于异常，仅测试了redirect部件是否清零
+ */
 class RenameTest (implicit p:Parameters) extends LazyModule with HasFrontendParameters{
     val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x0, 0x1000)))
     val frontend = LazyModule(new FrontEnd)
@@ -128,7 +131,7 @@ class RenameTest (implicit p:Parameters) extends LazyModule with HasFrontendPara
         dec2rename.io.enq.bits  := dec_uops
         dec2rename.io.enq.valid := dec_valid
         rename.io.dec_uops  <> dec2rename.io.deq 
-        rename.io.commit    := DontCare
+        rename.io.commit   := DontCare
         rename.io.redirect  := false.B
         rename.io.dis_uops := DontCare
         rename.io.dis_uops.ready := true.B

@@ -6,7 +6,7 @@ import freechips.rocketchip.amba._
 import freechips.rocketchip.diplomacy._
 ///////////////////////////Parameters//////////////////////
 import org.chipsalliance.cde.config._
-
+import grvcore.common._
 case object CoreKey extends Field[CoreParams]
 case class CoreParams(
     XLEN:Int =32,
@@ -17,6 +17,10 @@ case class CoreParams(
     coreWidth:Int = 2,
     numLregs:Int  = 32,
     numPregs:Int  = 64,
+    ROBEntry:Int  = 16,
+    issueParams :Seq[IssueParams] =  Seq(                
+        IssueParams(issueWidth=2, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=2),
+        IssueParams(issueWidth=2, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=2)),
     iqueueParams:IQueueParams = new IQueueParams,
     ftqParams:FtqParams = new FtqParams,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,
@@ -50,6 +54,8 @@ trait HasGRVParameters {
     val numRAS  = CoreParams.numRAS
     val ftqentries = CoreParams.ftqParams.nEntries
     val iqentries = CoreParams.iqueueParams.nEntries
+    val ROBEntry  = CoreParams.ROBEntry
+    val issueParams = CoreParams.issueParams
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
     val btbParams:Option[BTBParams] = CoreParams.btbParams
