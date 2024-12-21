@@ -33,7 +33,7 @@ object Elaborate extends App {
     ).reduce(_ + "," + _))
 
     
-    circt.stage.ChiselStage.emitSystemVerilogFile( new ComplexDispatcher(), args, firtoolOptions)
+    circt.stage.ChiselStage.emitSystemVerilogFile( new ROB(), args, firtoolOptions)
   
 
 }

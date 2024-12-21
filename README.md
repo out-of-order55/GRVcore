@@ -42,6 +42,8 @@ GRVCore
 
 2024/12/18：完成lrename测试，在C端写了软件的rename，通过difftest来对比重命名错误，目前软件端的重命名不支持配置,对RAT进行优化，将面积从13000降为9100
 
+2024/12/21：完成ROB代码编写，前两天firesim运行有问题（目前还没调通)
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

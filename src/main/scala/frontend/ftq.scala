@@ -44,6 +44,7 @@ class FTQBundle(implicit p: Parameters) extends  GRVBundle{
 }
 
 class BrUpdateInfo(implicit p: Parameters) extends  GRVBundle with HasFrontendParameters{
+    val uop              = new MicroOp
     val br_mask          = UInt(bankNum.W)
     val cfi_idx          = Valid(UInt(log2Ceil(fetchWidth).W))
     val cfi_taken        = Bool()
