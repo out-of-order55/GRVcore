@@ -38,12 +38,13 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     // val ldq_idx          = UInt(ldqAddrSz.W)
     // val stq_idx          = UInt(stqAddrSz.W)
     // val rxq_idx          = UInt(log2Ceil(numRxqEntries).W)
-
+    
     val pdst             = UInt(pregSz.W)
     val prs1             = UInt(pregSz.W)
     val prs2             = UInt(pregSz.W)
 
-
+    
+    val delay            = UInt(Delay_Sz.W)
     val prs1_busy        = Bool()
     val prs2_busy        = Bool()
 

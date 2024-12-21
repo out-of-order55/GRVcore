@@ -74,6 +74,7 @@ trait GRVOpConstants
     val FU_I2F = 256.U(FUC_SZ.W)
     val FU_F2I = 512.U(FUC_SZ.W)
 
+    val Delay_Sz         = 3
     /*     
     目前flush仅仅只有3种，需要refetch只有load/store违例
      */

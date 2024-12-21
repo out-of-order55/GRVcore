@@ -4,6 +4,13 @@ import chisel3._
 import chisel3.util._
 import grvcore.common._
 import org.chipsalliance.cde.config.Parameters
+
+/* 
+dispatch ：
+1.送入ROB，
+2.送入指令队列
+3.送入LSU，提前分配表项
+ */
 class DispatchIO(implicit p: Parameters) extends GRVBundle
 {
 

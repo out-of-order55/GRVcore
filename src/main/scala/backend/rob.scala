@@ -44,7 +44,7 @@ class ROBIO(implicit p: Parameters) extends GRVBundle{
     val wb_resp     = Flipped(MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, Valid(new ExuResp)))))
 
     val lsuexc      = Input(new Exception)
-    val br_info = Input(new BrUpdateInfo)
+    val br_info     = Input(new BrUpdateInfo)
 
 
     val br_update   = Output(new BrUpdateInfo)
