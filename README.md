@@ -44,6 +44,8 @@ GRVCore
 
 2024/12/21：完成ROB代码编写，前两天firesim运行有问题（目前还没调通)
 
+2024/12/22：调试firesim，准备一个命令一个命令的试，今天issue开了个头
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

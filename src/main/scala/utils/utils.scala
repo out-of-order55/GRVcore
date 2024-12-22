@@ -19,6 +19,20 @@ object MaskUpper
 //     num
 //   }
 // }
+object SelectFirstN
+{
+  def apply(in: UInt, n: Int) = {
+    val sels = Wire(Vec(n, UInt(in.getWidth.W)))
+    var mask = in
+
+    for (i <- 0 until n) {
+      sels(i) := PriorityEncoderOH(mask)
+      mask = mask & ~sels(i)
+    }
+
+    sels
+  }
+}
 object Transpose
 {
   def apply[T <: chisel3.Data](in: Vec[Vec[T]]) = {
