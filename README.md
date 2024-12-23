@@ -46,6 +46,8 @@ GRVCore
 
 2024/12/22：调试firesim，准备一个命令一个命令的试，今天issue开了个头
 
+2024/12/23：写完了issue，然后搭建了测试框架，目前解决了单个entry的uop会重复发送到不同的EXU
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

@@ -53,8 +53,8 @@ val issueWidth:Int,
 val numEntries:Int,
 val numWakeupPorts: Int,
 val dispatchWidth:Int)(implicit p: Parameters)extends GRVBundle{
-    val dis_uops    = Flipped(Vec(dispatchWidth,Decoupled(new MicroOp)))
-    val issue_uops  = Vec(issueWidth,Valid(new MicroOp))
+    val dis_uops    = Flipped(Decoupled(Vec(dispatchWidth,Valid(new MicroOp))))
+    val issue_uops  = Decoupled(Vec(issueWidth,Valid(new MicroOp)))
 
     val fu_using    = Input(Vec(issueWidth,Valid(UInt(FUC_SZ.W))))//for unpipeline:DIV 
     
@@ -71,11 +71,13 @@ class IssueEntry(val numWakeupPorts: Int)(implicit p: Parameters) extends  GRVMo
     //本周期entry无效或者本周期指令有效，但是已经被仲裁电路选中
     //这个信号是为了显示本entry是否为空
     val can_allocate = ((entry.valid&&io.grant)||(!entry.valid))
-    val cna_enq = can_allocate&io.dis_uop.valid
+    val can_enq = can_allocate&io.dis_uop.valid
     io.can_allocate := can_allocate
-    entry.bits := Mux(cna_enq,io.dis_uop.bits,entry.bits)
+    entry.bits := Mux(can_enq,io.dis_uop.bits,entry.bits)
     entry.valid:= Mux(io.flush,false.B,
-                    Mux(cna_enq,true.B,entry.valid))
+                    Mux(can_enq,true.B,
+                    Mux(io.grant,false.B,entry.valid)))
+    dontTouch(entry)
     /* 
     wake up
     问题：如何去调度每个wakeup端口的延迟，比如有一个ALU指令和一个MUL指令
@@ -126,10 +128,6 @@ class IssueEntry(val numWakeupPorts: Int)(implicit p: Parameters) extends  GRVMo
                     Mux(rs2_wakeupOH.reduce(_||_)||rs2_wait&&rs2_delay===0.U,false.B,rs2_bsy))
 
 
-    when(io.flush){
-        entry.valid := false.B
-    }
-
     io.req    := (!rs1_bsy)&(!rs2_bsy)&(entry.valid)
 
     io.ex_uop := entry
@@ -160,20 +158,22 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
     val entry_can_alloc = VecInit(entrys.map{e=>e.io.can_allocate})
     val entry_can_iss   = VecInit(entrys.map{e=>e.io.req})//可以发射的指令
     val ex_uops         = VecInit(entrys.map(_.io.ex_uop))
-    val full = WireInit(false.B)
-
+    val full            = WireInit(false.B)
+    val num_free        = PopCount(entrys.map(_.io.can_allocate))
+    full := num_free<dispatchWidth.U
+    io.dis_uops.ready := (!full)&(!io.flush)
     val in_sels = SelectFirstN(entry_can_alloc.asUInt,dispatchWidth)
     val iss_sels= SelectFirstN(entry_can_iss.asUInt,issueWidth)
-
+    // io.dis_uops
     //又是一个将n个数据写入m项的queue中，采用OH
 
     //每个issue接口都有一个dispatchWidth大小的来选择数据
     //in data
     (entrys.zipWithIndex).foreach{case(entry,idx)=>
         val issue_wenOH = (0 until dispatchWidth).map{i=>
-            io.dis_uops(i).valid&&idx.U===OHToUInt(in_sels(i))
+            io.dis_uops.bits(i).valid&&idx.U===OHToUInt(in_sels(i))
         }
-        val in_Data = Mux1H(issue_wenOH,io.dis_uops.map(_.bits))
+        val in_Data = Mux1H(issue_wenOH,io.dis_uops.bits.map(_.bits))
         
         entry.io.dis_uop.valid := issue_wenOH.reduce(_||_) 
         entry.io.dis_uop.bits  := in_Data
@@ -183,11 +183,57 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
     1.FU是否空闲
     2.是否有多个同FU的指令被仲裁，这样只会有一个会被送出去
      */
+    //init
     for(i <- 0 until issueWidth){
-        val iss_uop = Mux1H(iss_sels(i),ex_uops)
-        val can_iss = (!io.fu_using(i).valid)&&((io.fu_using(i).bits&iss_uop.bits.fu_code)=/=0.U)
+        io.issue_uops.bits(i).valid := false.B
+        io.issue_uops.bits(i).bits  := DontCare
+    }
+    for(i <- 0 until numEntries){
+        entrys(i).io.grant := false.B
+    }
 
-        // val can_iss = 
+    val has_iss = WireInit(VecInit.fill(issueWidth)(VecInit.fill(numEntries)(false.B)))
+    
+    /*
+    发射不仅要求entry req，而且一个entry发射后不能再被其他的端口发射
+    如果EXU0和EXU1含有一样的FU，匹配的一组数据只会发射到一个端口
+     */
+    for(i <- 0 until issueWidth){
+        
+        // val iss_OH  = (0 until issueWidth).map{w=> ex_uops(w).valid&&(ex_uops(w).bits.fu_code===io.fu_using(i).bits)}
+        // val iss_uop = Mux1H(iss_OH,ex_uops)
+        //这里也可以使用一个numEntries的bool信号，效果是一样的，综合结果也是一致
+        val iss_bsy = WireInit(VecInit.fill(numEntries+1)(false.B))//一个port不会选择多个entry
+        // var iss_bsy = false.B
+        dontTouch(iss_bsy)
+        for(j <- 0 until numEntries){
+            val entry_bsy = WireInit((0 until i).foldLeft(false.B)((w,idx)=>
+                has_iss(idx)(j)|w
+            ))
+            dontTouch(entry_bsy)
+            //多个port不会选择同一个entry
+            val can_iss   = (!io.fu_using(i).valid)&&(io.fu_using(i).bits===entrys(j).io.ex_uop.bits.fu_code)&&
+                        (entry_can_iss(j))&(!iss_bsy(j))&(!entry_bsy)
+            dontTouch(can_iss)
+            when(can_iss){
+                // entry_can_iss(j) := false.B
+                has_iss(i)(j)      := true.B
+                entrys(j).io.grant := io.issue_uops.ready
+                io.issue_uops.bits(i).valid := true.B
+                io.issue_uops.bits(i).bits  := entrys(j).io.ex_uop.bits
+            }
+            
+            iss_bsy(j+1)  := can_iss || iss_bsy(j)
+        }
+        
+
+    }
+    io.issue_uops.valid := io.issue_uops.bits.map(_.valid).reduce(_||_)
+    for(i <- 0 until numEntries){
+        //wakeup
+        entrys(i).io.wakeup := io.wakeup
+        //flush
+        entrys(i).io.flush  := io.flush
     }
     
 
