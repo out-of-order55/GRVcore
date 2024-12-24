@@ -12,8 +12,8 @@ import freechips.rocketchip.util._
 class SimTop (implicit p:Parameters)extends Module{
   val io = IO(new Bundle {})
   // val m = LazyModule(new RenameTest)
-  val m =Module(new IssueTest())
-  m.dontTouchPorts()
+  val m =Module(new DispatcherTest())
+  // m.dontTouchPorts()
   // val n= Module(m.module)
   // n.dontTouchPorts()
   // // bp.f3_resp:=DontCare

@@ -111,16 +111,20 @@ object SimTable{
             val newVal = value.litValue
             val bitWidth = value.getWidth  // 获取位宽
 
-            // 根据位宽判断使用二进制还是十六进制输出
-            if (bitWidth < 4) {
-            // 位宽小于 4，使用二进制格式
-                writer.println(String.format(s"%${bitWidth}s %s", newVal.toString(2).padTo(bitWidth, '0'), name))
-            } else {
+            // // 根据位宽判断使用二进制还是十六进制输出
+            // if (bitWidth < 4) {
+            // // 位宽小于 4，使用二进制格式
+            //     writer.println(String.format(s"%${bitWidth}s %s", newVal.toString(2).padTo(bitWidth, '0'), name))
+            // } else {
+            //     val hexDigits = (bitWidth + 3) / 4
+            //     val newValLong = newVal.toLong
+            //     val hexFormat = s"%0${hexDigits}x"
+            //     writer.println(String.format(hexFormat, newValLong) + s" $name")
+            // }
                 val hexDigits = (bitWidth + 3) / 4
                 val newValLong = newVal.toLong
                 val hexFormat = s"%0${hexDigits}x"
                 writer.println(String.format(hexFormat, newValLong) + s" $name")
-            }
         }
 
         writer.close()

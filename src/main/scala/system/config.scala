@@ -56,6 +56,8 @@ trait HasGRVParameters {
     val iqentries = CoreParams.iqueueParams.nEntries
     val ROBEntry  = CoreParams.ROBEntry
     val issueParams = CoreParams.issueParams
+    val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
+    val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
     val btbParams:Option[BTBParams] = CoreParams.btbParams
