@@ -19,8 +19,8 @@ import freechips.rocketchip.util.DontTouch
 
 目前简单的仲裁测试完成
 之后会
-1.设置多个EXU，每个EXU有不同的FU
-2.验证延迟唤醒
+1.设置多个EXU，每个EXU有不同的FU:
+2.验证延迟唤醒 :finish
 
 */
 class DisGen (val dispatchWidth:Int)(implicit  p:Parameters) extends GRVModule{
@@ -36,10 +36,11 @@ class DisGen (val dispatchWidth:Int)(implicit  p:Parameters) extends GRVModule{
     cnt := cnt + 1.U
     io.dis_uops:= DontCare
     for(i <- 0 until dispatchWidth){
-        io.dis_uops(i).bits.fu_code   := FU_ALU//Mux(cnt===2.U,FU_JMP,FU_ALU)
+        io.dis_uops(i).bits.fu_code   := Mux(cnt%3.U===0.U,FU_MUL,FU_ALU) //Mux(cnt===2.U,FU_JMP,FU_ALU)
         io.dis_uops(i).bits.lrs1_rtype:= RT_FIX
         io.dis_uops(i).bits.lrs2_rtype:= RT_FIX
-        io.dis_uops(i).bits.pdst      := Mux(io.dis_uops(i).valid,LFSR(pregSz+1)(pregSz-1,0)+1.U,0.U)
+        io.dis_uops(i).bits.pdst      := Mux(io.dis_uops(i).valid,
+                                        Mux(i.U===0.U,LFSR(pregSz+1)(pregSz-1,0)+1.U,LFSR(pregSz+1)(pregSz-1,0)+2.U),0.U)
         io.dis_uops(i).bits.prs1      := RegNext(io.dis_uops(i).bits.pdst)
         io.dis_uops(i).bits.prs2      := RegNext(io.dis_uops(i).bits.pdst)
         io.dis_uops(i).bits.ldst_val  := io.dis_uops(i).bits.pdst=/=0.U
@@ -62,17 +63,27 @@ class WakeUpGen (val issueWidth:Int,val dispatchWidth:Int,val numWakeupPorts:Int
 
     for(i <- 0 until issueWidth){
         io.fu_using(i).valid := false.B
-        io.fu_using(i).bits  := FU_ALU
-        io.wakeup(i).valid   := io.ex_uops(i).valid
-        io.wakeup(i).pdst    := io.ex_uops(i).bits.pdst
-        io.wakeup(i).delay   := 0.U
+        io.fu_using(i).bits  := FU_MUL|FU_ALU
+
     }
+    val sel = RegInit(false.B)
+    //4个port，前两个是EXU0，后两个是EXU1
+    for(i <- 0 until numWakeupPorts){
+        val ex_idx = i/2
+        val is_alu = io.ex_uops(ex_idx).bits.fu_code===FU_ALU
+        val is_mul = io.ex_uops(ex_idx).bits.fu_code===FU_MUL
+        val valid  = io.ex_uops(ex_idx).valid
+        io.wakeup(i).valid   := Mux((i%2).U===0.U,is_alu&valid,is_mul&valid)
+        io.wakeup(i).pdst    := io.ex_uops(ex_idx).bits.pdst
+        io.wakeup(i).delay   := Mux(is_alu,0.U,3.U)
+    }
+
 
 }
 class IssueTest(implicit  p:Parameters) extends GRVModule with DontTouch{
     val dispatchWidth=2
     val issueWidth = 2
-    val numWakeupPorts=2
+    val numWakeupPorts=4
     
     val disgen = Module(new DisGen(dispatchWidth))
     val check = Module(new Checker)

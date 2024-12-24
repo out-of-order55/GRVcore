@@ -48,6 +48,8 @@ GRVCore
 
 2024/12/23：写完了issue，然后搭建了测试框架，目前解决了单个entry的uop会重复发送到不同的EXU
 
+2024/12/24：完成了issue测试，但是由于没有对比测试，所以测试用例比较简单（并且只能肉眼debug)，但目前是已经可以将发射的指令分发到不同的EXU
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

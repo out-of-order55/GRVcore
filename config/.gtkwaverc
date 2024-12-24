@@ -5,3 +5,7 @@ color_grid 636363
 enable_horiz_grid 0
 use_fat_lines 1
 use_big_fonts  1
+
+accel "/File/Write Save File" <Control>S
+accel "/Edit/Create Group" <Control>G
+

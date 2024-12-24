@@ -113,14 +113,14 @@ class IssueEntry(val numWakeupPorts: Int)(implicit p: Parameters) extends  GRVMo
     }
 
 
-    rs1_delay := Mux(rs1_wakeup_delay.reduce(_||_),io.wakeup(PriorityEncoder(rs1_wakeup_delay)).delay,
+    rs1_delay := Mux(rs1_wakeup_delay.reduce(_||_)&(!rs1_wait),io.wakeup(PriorityEncoder(rs1_wakeup_delay)).delay,
                     Mux(rs1_delay=/=0.U,rs1_delay-1.U,rs1_delay))
     rs1_wait  := Mux(rs1_wakeup_delay.reduce(_||_),true.B,
                     Mux(rs1_wait&&rs1_delay===0.U,false.B,rs1_wait))
     rs1_bsy   := Mux(io.dis_uop.valid,io.dis_uop.bits.prs1_busy,
                     Mux(rs1_wakeupOH.reduce(_||_)||rs1_wait&&rs1_delay===0.U,false.B,rs1_bsy))
 
-    rs2_delay := Mux(rs2_wakeup_delay.reduce(_||_),io.wakeup(PriorityEncoder(rs2_wakeup_delay)).delay,
+    rs2_delay := Mux(rs2_wakeup_delay.reduce(_||_)&(!rs1_wait),io.wakeup(PriorityEncoder(rs2_wakeup_delay)).delay,
                     Mux(rs2_delay=/=0.U,rs2_delay-1.U,rs2_delay))
     rs2_wait  := Mux(rs2_wakeup_delay.reduce(_||_),true.B,
                     Mux(rs2_wait&&rs2_delay===0.U,false.B,rs2_wait))
@@ -212,7 +212,7 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
             ))
             dontTouch(entry_bsy)
             //多个port不会选择同一个entry
-            val can_iss   = (!io.fu_using(i).valid)&&(io.fu_using(i).bits===entrys(j).io.ex_uop.bits.fu_code)&&
+            val can_iss   = (!io.fu_using(i).valid)&&((io.fu_using(i).bits&entrys(j).io.ex_uop.bits.fu_code)=/=0.U)&&
                         (entry_can_iss(j))&(!iss_bsy(j))&(!entry_bsy)
             dontTouch(can_iss)
             when(can_iss){
