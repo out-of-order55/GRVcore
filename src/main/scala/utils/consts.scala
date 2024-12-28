@@ -2,10 +2,6 @@ package grvcore
 import chisel3._
 import chisel3.util._
 
-import freechips.rocketchip.amba.axi4._
-import freechips.rocketchip.diplomacy._
-import org.chipsalliance.cde.config._
-// from boom
 
 
 //from boom
@@ -88,13 +84,52 @@ trait GRVOpConstants
     val IQT_MEM = 2.U(IQT_SZ.W)
     val IQT_FP  = 4.U(IQT_SZ.W)
     val IQT_MFP = 6.U(IQT_SZ.W)
-
+    val PC_PLUS4 = 0.U(2.W)  // PC + 4
+    val PC_BRJMP = 1.U(2.W)  // brjmp_target
+    val PC_JALR  = 2.U(2.W)  // jump_reg_target
     val IS_I   = 0.U(3.W)  // I-Type  (LD,ALU)
     val IS_S   = 1.U(3.W)  // S-Type  (ST)
     val IS_B   = 2.U(3.W)  // SB-Type (BR)
     val IS_U   = 3.U(3.W)  // U-Type  (LUI/AUIPC)
     val IS_J   = 4.U(3.W)  // UJ-Type (J/JAL)
+
     val IS_X   = BitPat("b???")
+    // Branch Type
+    val BJP_N   = 0.U(4.W)  
+    val BJP_NE  = 1.U(4.W)  
+    val BJP_EQ  = 2.U(4.W)  
+    val BJP_GE  = 3.U(4.W)  
+    val BJP_GEU = 4.U(4.W)  
+    val BJP_LT  = 5.U(4.W)  
+    val BJP_LTU = 6.U(4.W)  
+    val BJP_J   = 7.U(4.W)  
+    val BJP_JR  = 8.U(4.W)  
+
+    // RS1 Operand Select Signal
+    val OP1_RS1 = 0.U(2.W) // Register Source #1
+    val OP1_ZERO= 1.U(2.W)
+    val OP1_PC  = 2.U(2.W)
+    val OP1_X   = BitPat("b??")
+
+    // RS2 Operand Select Signal
+    val OP2_RS2 = 0.U(3.W) // Register Source #2
+    val OP2_IMM = 1.U(3.W) // immediate
+    val OP2_ZERO= 2.U(3.W) // constant 0
+    val OP2_NEXT= 3.U(3.W) // constant 2/4 (for PC+2/4)
+    val OP2_IMMC= 4.U(3.W) // for CSR imm found in RS1
+    val OP2_X   = BitPat("b???")
+
+    // Register File Write Enable Signal
+    val REN_0   = false.B
+    val REN_1   = true.B
+
+
+    val Sz_DW = 1
+    val dw_X   = true.B // Bool(xLen==64)
+    val dw_32  = false.B
+    val dw_64  = true.B
+    val dw_XPR = true.B // Bool(xLen==64)
+
 
     val RT_FIX   = 0.U(2.W)
     val RT_FLT   = 1.U(2.W)

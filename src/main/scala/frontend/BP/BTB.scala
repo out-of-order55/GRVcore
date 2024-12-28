@@ -2,10 +2,8 @@ package grvcore
 import chisel3._
 import chisel3.util._
 
-import freechips.rocketchip.amba.axi4._
-import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
-import freechips.rocketchip.tilelink.TLRationalImp.bundle
+
 
 
 case class BTBParams(
@@ -24,9 +22,9 @@ BTB只记录taken的指令，而br可能是000001（循环），所以会一直�
 该程序问题（cpu-test的add测试）
 */
 class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
-    val BTBnSets      = btbParams.getOrElse(BTBParams()).nSets
+    val BTBnSets      = btbParams.nSets
     val tagSz         = XLEN - log2Ceil(BTBnSets) - log2Ceil(fetchWidth) - 1
-    val offsetSz      = btbParams.getOrElse(BTBParams()).offsetSz
+    val offsetSz      = btbParams.offsetSz
     class BTBEntry extends Bundle{
         val br_type = UInt(2.W)
         val offset  = UInt(offsetSz.W)

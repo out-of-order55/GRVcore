@@ -298,8 +298,8 @@ class FrontEndTest (implicit p:Parameters)extends GRVModule with HasFrontendPara
     ftq.io.brupdate.cfi_idx          := update.io.update.bits.cfi_idx         
     ftq.io.brupdate.cfi_taken        := update.io.update.bits.cfi_taken       
     ftq.io.brupdate.cfi_mispredicted := update.io.update.bits.is_mispredict_update
-    ftq.io.brupdate.cfi_is_call      := update.io.update.bits.cfi_is_call     
-    ftq.io.brupdate.cfi_is_ret       := update.io.update.bits.cfi_is_ret      
+    // ftq.io.brupdate.cfi_is_call      := update.io.update.bits.cfi_is_call     
+    // ftq.io.brupdate.cfi_is_ret       := update.io.update.bits.cfi_is_ret      
     ftq.io.brupdate.cfi_type         := update.io.update.bits.cfi_type        
     ftq.io.brupdate.is_jal           := update.io.update.bits.is_jal          
     ftq.io.brupdate.is_jalr          := update.io.update.bits.is_jalr         

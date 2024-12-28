@@ -1,9 +1,9 @@
 package grvcore
 import chisel3._
 import chisel3.util._
-// import scala.util.matching.Regex
-import freechips.rocketchip.amba._
-import freechips.rocketchip.diplomacy._
+
+import freechips.rocketchip.rocket.MulDivParams
+
 ///////////////////////////Parameters//////////////////////
 import org.chipsalliance.cde.config._
 import grvcore.common._
@@ -18,6 +18,7 @@ case class CoreParams(
     numLregs:Int  = 32,
     numPregs:Int  = 64,
     ROBEntry:Int  = 16,
+    mulDiv: Option[freechips.rocketchip.rocket.MulDivParams] = Some(MulDivParams(divEarlyOut=true)),
     issueParams :Seq[IssueParams] =  Seq(                
         IssueParams(issueWidth=2, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=2),
         IssueParams(issueWidth=2, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=2)),
@@ -25,7 +26,7 @@ case class CoreParams(
     ftqParams:FtqParams = new FtqParams,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,
     UBTBParams:Option[MicroBTBParams] = Some(new MicroBTBParams) ,
-    btbParams:Option[BTBParams] = Some(new BTBParams),
+    btbParams:Option[BTBParams] = Some(new BTBParams()),
     branchPredictor: (BPResp, Parameters) => Tuple2[Seq[BasePredictor], BPResp] =
         (resp_in: BPResp, p: Parameters) => {
         val ubtb = Module(new MicroBTBBranchPredictor()(p))
@@ -56,11 +57,12 @@ trait HasGRVParameters {
     val iqentries = CoreParams.iqueueParams.nEntries
     val ROBEntry  = CoreParams.ROBEntry
     val issueParams = CoreParams.issueParams
+    val mulDivParams= CoreParams.mulDiv.getOrElse(MulDivParams())
     val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
     val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
-    val btbParams:Option[BTBParams] = CoreParams.btbParams
+    val btbParams = CoreParams.btbParams.getOrElse(BTBParams())
     def getBPDComponents(resp_in: BPResp, p: Parameters) = {
         CoreParams.branchPredictor(resp_in, p)
     }

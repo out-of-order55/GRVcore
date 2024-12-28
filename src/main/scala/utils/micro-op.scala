@@ -2,8 +2,7 @@ package grvcore
 import chisel3._
 import chisel3.util._
 import grvcore.common._
-import freechips.rocketchip.amba.axi4._
-import freechips.rocketchip.diplomacy._
+
 import org.chipsalliance.cde.config._
 
 class MicroOp(implicit p: Parameters) extends GRVBundle with 
@@ -20,11 +19,12 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     val is_jalr          = Bool()                      
     val is_jal           = Bool()                     
     val taken            = Bool()
+    val br_type          = UInt(2.W)
     //指令唯一标示
     val ftq_idx          = UInt(log2Ceil(ftqentries).W)
     val iq_type          = UInt(IQT_SZ.W)        // which issue unit do we use?
     val fu_code          = UInt(FUC_SZ.W) // which functional unit do we use?
-    // val ctrl             = new CtrlSignals// for exu
+    val ctrl             = new CtrlSignals// for exu
 
 
 
@@ -79,4 +79,17 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     // def rf_wen           = dst_rtype =/= RT_X
 
 
+}
+class CtrlSignals extends Bundle()
+{
+    val br_type     = UInt(BR_N.getWidth.W)
+    val op1_sel     = UInt(OP1_X.getWidth.W)
+    val op2_sel     = UInt(OP2_X.getWidth.W)
+    val imm_sel     = UInt(IS_X.getWidth.W)
+    val op_fcn      = UInt(freechips.rocketchip.rocket.ALU.SZ_ALU_FN.W)
+    val fcn_dw      = Bool()
+    val csr_cmd     = UInt(freechips.rocketchip.rocket.CSR.SZ.W)
+    val is_load     = Bool()   // will invoke TLB address lookup
+    val is_sta      = Bool()   // will invoke TLB address lookup
+    val is_std      = Bool()
 }

@@ -33,7 +33,7 @@ object Elaborate extends App {
     ).reduce(_ + "," + _))
 
     
-    circt.stage.ChiselStage.emitSystemVerilogFile( new SimTop, args, firtoolOptions)
+    circt.stage.ChiselStage.emitSystemVerilogFile( new ALUExuUnit(true,true,true,true), args, firtoolOptions)
   
 
 }

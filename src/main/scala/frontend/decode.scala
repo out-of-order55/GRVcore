@@ -219,6 +219,10 @@ class DecodeUnit(implicit p:Parameters) extends GRVModule
     uop.is_br      := cs.is_br
     uop.is_jal     := uop.uopc===uopJAL
     uop.is_jalr    := uop.uopc===uopJALR
+    uop.br_type    := Mux(uop.is_br,BR.U,Mux((uop.ldst===1.U||uop.ldst===5.U)&&(uop.is_jal||uop.is_jalr),
+                    CALL.U,
+                    Mux(uop.is_jalr&&(uop.ldst===0.U)&&(uop.lrs1===1.U||uop.lrs1===5.U),RET.U,0.U)))
+
     io.deq.uop := uop
 
 }

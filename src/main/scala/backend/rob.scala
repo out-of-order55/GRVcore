@@ -163,8 +163,8 @@ class ROB(implicit p: Parameters) extends GRVModule{
     }
     for(i <- 0 until issueParams.size){
         for(j <- 0 until coreWidth){
-            val wb_rob_bank = GetBankIdx(io.wb_resp(i)(j).bits.uops.rob_idx)
-            val wb_rob_idx  = GetRowIdx(io.wb_resp(i)(j).bits.uops.rob_idx)
+            val wb_rob_bank = GetBankIdx(io.wb_resp(i)(j).bits.uop.rob_idx)
+            val wb_rob_idx  = GetRowIdx(io.wb_resp(i)(j).bits.uop.rob_idx)
             when(io.wb_resp(i)(j).valid){
                 rob_entry(wb_rob_bank)(wb_rob_idx).finish := true.B
             }
