@@ -14,7 +14,7 @@ class ROBEnqGen (implicit  p:Parameters) extends GRVModule{
 }
 class ROBTest (implicit  p:Parameters) extends GRVModule{
 
-    val rob         = Module(new ROB)
+    val rob         = Module(new ROB(4))
     val dispatcher  = Module(new BaseDispatcher)
     
 

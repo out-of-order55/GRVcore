@@ -37,11 +37,11 @@ class Exception(implicit p: Parameters) extends GRVBundle{
     val uops  = (new MicroOp)
     val cause = UInt(32.W)
 }
-class ROBIO(implicit p: Parameters) extends GRVBundle{
+class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
 
     val enq         = Flipped(Decoupled(new robEnqueue))
     val enq_idxs    = Output(Vec(coreWidth,UInt(log2Ceil(ROBEntry).W)))
-    val wb_resp     = Flipped(MixedVec(issueParams.map(ip=>Vec(ip.dispatchWidth, Valid(new ExuResp)))))
+    val wb_resp     = Flipped(Vec(numWakeupPorts, Valid(new ExuResp)))
 
     val lsuexc      = Input(new Exception)
     val br_info     = Input(new BrUpdateInfo)
@@ -60,8 +60,8 @@ class ROBEntryBundle(implicit p: Parameters)extends Bundle{
     val flush   = Bool()
     val uop     = new MicroOp//目前没有优化逻辑，所以仍然使用的这个
 }
-class ROB(implicit p: Parameters) extends GRVModule{
-    val io = IO(new ROBIO)
+class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
+    val io = IO(new ROBIO(numWakeupPorts))
     val RobSz = log2Ceil(ROBEntry)
     /* 
     ROB状态机 
@@ -137,6 +137,7 @@ class ROB(implicit p: Parameters) extends GRVModule{
 
         //enq
         when(do_enq){
+            rob_entry(i)(rob_enq_val).finish := false.B
             rob_entry(i)(rob_enq_val).valid := enqInfo.bits.valid(i)
             rob_entry(i)(rob_enq_val).uop   := enqInfo.bits.uops(i)
             io.enq_idxs(i) := rob_enq_val + i.U
@@ -161,15 +162,14 @@ class ROB(implicit p: Parameters) extends GRVModule{
             rob_entry(br_miss_bank)(br_miss_row).uop   := br_info.uop
         }
     }
-    for(i <- 0 until issueParams.size){
-        for(j <- 0 until coreWidth){
-            val wb_rob_bank = GetBankIdx(io.wb_resp(i)(j).bits.uop.rob_idx)
-            val wb_rob_idx  = GetRowIdx(io.wb_resp(i)(j).bits.uop.rob_idx)
-            when(io.wb_resp(i)(j).valid){
-                rob_entry(wb_rob_bank)(wb_rob_idx).finish := true.B
-            }
+    for(i<-0 until numWakeupPorts){
+        val wb_rob_bank = GetBankIdx(io.wb_resp(i).bits.uop.rob_idx)
+        val wb_rob_idx  = GetRowIdx(io.wb_resp(i).bits.uop.rob_idx)
+        when(io.wb_resp(i).valid){
+            rob_entry(wb_rob_bank)(wb_rob_idx).finish := true.B
         }
     }
+
     //指针更新逻辑
     when(do_enq){
         rob_enq_ptr := rob_enq_ptr + 1.U

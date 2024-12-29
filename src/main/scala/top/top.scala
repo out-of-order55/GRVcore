@@ -11,9 +11,9 @@ import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
   val io = IO(new Bundle {})
-  // val m = LazyModule(new RenameTest)
-  val m =Module(new DispatcherTest())
-  // m.dontTouchPorts()
+  // val m = LazyModule(new FrontEnd)
+  // // val m =Module(new DispatcherTest())
+  // // m.dontTouchPorts()
   // val n= Module(m.module)
   // n.dontTouchPorts()
   // // bp.f3_resp:=DontCare
@@ -24,6 +24,7 @@ object Elaborate extends App {
     println("-----------------Generate Verilog--------------------")
     implicit val p:Parameters = new Test1Config() 
     // val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x20000000, 0x1000)))
+
     val firtoolOptions = Array("--lowering-options=" + List(
     // make yosys happy
     // see https://github.com/llvm/circt/blob/main/docs/VerilogGeneration.md
@@ -33,7 +34,7 @@ object Elaborate extends App {
     ).reduce(_ + "," + _))
 
     
-    circt.stage.ChiselStage.emitSystemVerilogFile( new ALUExuUnit(true,true,true,true), args, firtoolOptions)
+    circt.stage.ChiselStage.emitSystemVerilogFile(new SimTop, args, firtoolOptions)
   
 
 }

@@ -77,7 +77,7 @@ class FrontEnd(implicit p: Parameters) extends LazyModule{
     
 }
 class FrontendImp(val outer: FrontEnd)(implicit p: Parameters) extends LazyModuleImp(outer) 
-with HasFrontendParameters with GRVOpConstants{
+with HasFrontendParameters with GRVOpConstants with DontTouch{
     val io = IO(new FrontBundle)
 
 
