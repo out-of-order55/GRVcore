@@ -52,7 +52,7 @@ val needsFcsr: Boolean = false)
     io.resp.bits.uop := uop
     io.resp.bits.wb_data:= DontCare
     if (isJmpUnit) {
-        val block_pc = AlignPCToBoundary(io.get_ftq_pc.pc, blockBytes)
+        val block_pc = AlignPCToBoundary(io.get_ftq_pc.pc, ICacheParam.blockBytes)
         val uop_pc = (block_pc | uop.pc_off)
 
         op1_data := Mux(uop.ctrl.op1_sel.asUInt === OP1_RS1 , io.req.bits.rs1_data,
@@ -152,7 +152,7 @@ extends FunctionalUnit(
     target_XLEN := (target_base + target_offset).asUInt
     
 
-    val cfi_idx = (uop.pc_off/(XLEN/8).U)(log2Ceil(blockBytes)-1,0)
+    val cfi_idx = (uop.pc_off/(XLEN/8).U)(log2Ceil(ICacheParam.blockBytes)-1,0)
 
     when (pc_sel === PC_JALR) {
     mispredict := 

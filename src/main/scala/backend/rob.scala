@@ -24,7 +24,7 @@ class CommitMsg(implicit p: Parameters) extends GRVBundle{
 class CommitExcMsg(implicit p: Parameters) extends GRVBundle{
 
     val ftq_idx    = UInt(log2Ceil(ftqentries).W)
-    val pc_lob     = UInt(log2Ceil(blockBytes).W)
+    val pc_lob     = UInt(log2Ceil(ICacheParam.blockBytes).W)
     val cause      = UInt(32.W)
     val epc        = UInt(XLEN.W)//for mispred
     val flush_typ  = UInt(FLUSH_SZ.W)
@@ -111,8 +111,8 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val is_exc_inst_commit = WireInit(false.B)
     val br_update   = RegInit(0.U.asTypeOf(new BrUpdateInfo))
     do_enq := io.enq.fire&&(!rob_state===s_redirect)
-    val deq_vld_mask    = WireInit(UInt(log2Ceil(blockBytes).W),(VecInit(rob_entry.map{i=> i(rob_deq_val).valid}).asUInt))
-    val deq_finish_mask = WireInit(UInt(log2Ceil(blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish}).asUInt))
+    val deq_vld_mask    = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=> i(rob_deq_val).valid}).asUInt))
+    val deq_finish_mask = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish}).asUInt))
     /* 
     可以提交的情况：
     1.无异常，此时只要finfish的个数等于vld的个数，就说明可以提交

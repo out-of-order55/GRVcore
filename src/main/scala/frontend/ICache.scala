@@ -31,6 +31,15 @@ case class ICacheParams(
 }
 
 trait HasICacheParameters extends HasGRVParameters{
+    val nSets        = ICacheParam.nSets      
+    val nWays        = ICacheParam.nWays     
+    val rowBits      = ICacheParam.rowBits   
+    val prefetch     = ICacheParam.prefetch  
+    val blockBytes   = ICacheParam.blockBytes
+    val fetchBytes   = ICacheParam.fetchBytes
+    val fetchWidth   = blockBytes/(XLEN/8)
+    def fetchIdx(addr: UInt)  = addr >> log2Ceil(blockBytes)
+
 	val bankNum     = blockBytes/(XLEN/8)
 	val indexWidth  = log2Ceil(nSets)
 	val offsetWidth = log2Ceil(blockBytes)

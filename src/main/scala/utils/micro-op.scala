@@ -11,7 +11,7 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     //译码信息
     val uopc             = UInt(UOPC_SZ.W)       
     //pc的偏移
-    val pc_off           = UInt(log2Ceil(blockBytes).W)
+    val pc_off           = UInt(log2Ceil(ICacheParam.blockBytes).W)
     val inst             = UInt(32.W)
 
     //分支预测和类型

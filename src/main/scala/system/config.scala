@@ -67,22 +67,17 @@ trait HasGRVParameters {
         CoreParams.branchPredictor(resp_in, p)
     }
     //ICache
-    val ICacheParams = p(ICacheKey)
-    val nSets        = ICacheParams.nSets      
-    val nWays        = ICacheParams.nWays     
-    val rowBits      = ICacheParams.rowBits   
-    val prefetch     = ICacheParams.prefetch  
-    val blockBytes   = ICacheParams.blockBytes
-    val fetchBytes   = ICacheParams.fetchBytes
-    val fetchWidth   = blockBytes/(XLEN/8)
-    def fetchIdx(addr: UInt)  = addr >> log2Ceil(blockBytes)
+    val ICacheParam = p(ICacheKey)
 
 
-    
+    val DCacheParam = p(DCacheKey)
+
+
 }
 class BaseConfig extends Config((site, here, up) => {
     case CoreKey => CoreParams()
     case ICacheKey => ICacheParams()
+    case DCacheKey => DCacheParams()
 })
 //test ubtb
 class TestConfig extends Config(

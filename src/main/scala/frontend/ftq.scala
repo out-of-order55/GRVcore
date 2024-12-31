@@ -29,7 +29,7 @@ case class FtqParams(
 
 
 //分支预测信息
-class FTQBundle(implicit p: Parameters) extends  GRVBundle{
+class FTQBundle(implicit p: Parameters) extends  GRVBundle with HasFrontendParameters{
     val cfi_idx   = Valid(UInt(log2Ceil(fetchWidth).W))
 
     val cfi_taken = Bool()
