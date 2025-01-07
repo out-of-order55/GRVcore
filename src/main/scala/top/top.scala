@@ -34,7 +34,7 @@ object Elaborate extends App {
     ).reduce(_ + "," + _))
 
     
-    circt.stage.ChiselStage.emitSystemVerilogFile(new SimTop, args, firtoolOptions)
+    circt.stage.ChiselStage.emitSystemVerilogFile(new DMissUnit, args, firtoolOptions)
   
 
 }
