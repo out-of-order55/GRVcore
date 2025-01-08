@@ -43,9 +43,9 @@ class DCacheWriteIO(implicit p: Parameters) extends GRVBundle with HasDCachePara
 class DCacheBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val read = Vec(numReadport,new DCacheReadIO)
     val write = new DCacheWriteIO
-
-    val s1_kill = Bool()
-    val s2_kill = Bool()
+    val flush   = Input(Bool())
+    val s1_kill = Input(Bool())
+    val s2_kill = Input(Bool())
 }
 //mshr的队列数据mask不一定是总是1
 class MSHREntry(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{

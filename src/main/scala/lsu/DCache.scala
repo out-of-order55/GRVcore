@@ -123,7 +123,8 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	val enqNextPtr = mshr_enq_ptr + numEnq
 	io.full := (mshr_enq_ptr(mshrSz)=/=mshr_deq_ptr(mshrSz)&&(numEnq+mshr_enq_ptr)(mshrSz-1,0)>mshr_deq_ptr(mshrSz-1,0))||
     numValid===numMSHRs.U
-	val empty = (mshr_enq_ptr(mshrSz)=/=mshr_deq_ptr(mshrSz))&&mshr_enq_ptr(mshrSz-1,0)===mshr_deq_ptr(mshrSz-1,0)
+	val empty = (mshr_enq_ptr(mshrSz)===mshr_deq_ptr(mshrSz))&&mshr_enq_ptr(mshrSz-1,0)===mshr_deq_ptr(mshrSz-1,0)
+	dontTouch(empty)
 	//normal->no miss req->has miss  wait_ack->wait data end->receive data
 	/* 
 	normal:		没有发生miss的状态	
@@ -145,7 +146,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	val state = RegNext(s_reset)
 	val state_n = WireInit(state)
 	val send_req = (state===s_normal)&&(!empty)
-
+	dontTouch(send_req)
 	
 	
 //////////////////////////////////WBQ///////////////////////////////
@@ -153,10 +154,16 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 
 ///////////////////////////////////MSHR/////////////////////////////
     //write
-    
+
+
 
     for(i <- 0 until numReadport){
-        req(i)          	:= io.missmsg(i).miss
+		val check_same 		 = mshrs.map{mshr=>
+				mshr.addr===io.missmsg(i).addr&&mshr.valid
+			}.reduce(_||_)
+			// ||io.refill.bits.refill_addr===io.missmsg(i).addr&&io.refill.fire
+					//一方面和mshr的相等，另一方面和refill的相等，最后就是两个miss相等，这个没什么影响
+        req(i)          	:= io.missmsg(i).miss&&(!check_same)
         reqData(i).addr 	:= io.missmsg(i).addr
         reqData(i).data 	:= io.missmsg(i).data
 		reqData(i).mask 	:= io.missmsg(i).mask
@@ -189,7 +196,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	.elsewhen(req.reduce(_||_)){
 		mshr_enq_ptr := mshr_enq_ptr + enqNextPtr
 	}
-	when(state===s_refill_end){
+	when(io.refill.fire){
 		mshrs(mshr_deq_ptr).valid := false.B
 		mshr_deq_ptr := mshr_deq_ptr + 1.U
 	}
@@ -227,7 +234,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	aw <> io.master.aw.bits
 	w  <> io.master.w.bits
 	b  <> io.master.b.bits
-
+	dontTouch(io.master)
 	val rcnt 		= Reg(UInt(log2Ceil(2*blockBytes/4).W))
 	val wcnt 		= Reg(UInt(log2Ceil(2*blockBytes/4).W))
 
@@ -302,12 +309,13 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		replaceEntry.valid:= io.replace_resp.valid&&io.replace_resp.bits.dirty
 		// s_refillMask := Cat(missmsg1.miss,missmsg0.miss).asUInt
 	}
-	when(state===s_replace_wait_ack&io.master.w.fire){
+	
+	when(state===s_replace_req&&state_n===s_replace_wait_ack||(state===s_replace_wait_ack&&io.master.w.fire)){
 		io.master.w.bits.data := wdata(wcnt)
 	}
 	awvalid := Mux(state===s_replace_req&state_n===s_replace_wait_ack,true.B,Mux(aw_fire,false.B,awvalid))
-	wvalid  := Mux(state===s_replace_req&state_n===s_replace_wait_ack,true.B,Mux(w_fire,false.B,wvalid))
-	wcnt 	:= Mux(state===s_replace_req&state_n===s_replace_wait_ack,0.U,Mux(b_fire,wcnt + 1.U,wcnt))
+	wvalid  := Mux(state===s_replace_req&state_n===s_replace_wait_ack,true.B,Mux(w_fire&&state_n===s_replace_end,false.B,wvalid))
+	wcnt 	:= Mux(state===s_replace_req&state_n===s_replace_wait_ack,0.U,Mux(w_fire,wcnt + 1.U,wcnt))
 	w.last 	:= Mux(wcnt===(blockBytes/4).U&&(!w_fire),true.B,Mux(w_fire,false.B,w.last))
 	bready 	:= Mux(aw_fire&&w_fire,true.B,
 				Mux(b_fire,false.B,bready))
@@ -332,7 +340,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 			}
 		}
 		is(s_replace_wait_ack){
-			when(b_fire&&wcnt===(blockBytes/4-1).U){
+			when(w_fire&&wcnt===(blockBytes/4-1).U){
 				state_n := s_replace_end
 			}
 		}
@@ -386,6 +394,7 @@ class DCacheImp(val outer: DCache)(implicit p: Parameters) extends LazyModuleImp
 with HasDCacheParameters with GRVOpConstants with DontTouch{
 
     val io = IO(new DCacheBundle)
+	dontTouch(io)
     val (master,_) = outer.masterNode.out(0)
 
     class Meta extends Bundle{
@@ -407,12 +416,13 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 							)))))
 	
 	val missunit   		= Module(new DMissUnit())
+	
 	val refill   		= WireInit(missunit.io.refill.bits)
 	val mshr_full		= WireInit(missunit.io.full)
 	val refillData 		= WireInit(refill.refillData)
 	val refill_addr		= WireInit(refill.refill_addr)
 	val refillMsg 		= AddressSplitter(refill_addr)
-	val refilled 		= WireInit(refill.refilled)
+	val refilled 		= WireInit(refill.refilled&&missunit.io.refill.fire)
 	val refillWay 		= WireInit(refill.refillWay)
 	val replaceMsg 		= WireInit(missunit.io.replace_req.bits)
 	val replaced  		 = WireInit(missunit.io.replace_req.fire)
@@ -441,8 +451,13 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	val s1_waddr        = RegNext(s0_waddr    )
 	val s1_wmsg         = RegNext(s0_wmsg     )
 	val s1_wmask        = RegNext(s0_wmask)
-
-    val s1_whit    = VecInit((rtag zip rvalid).map{case(a,b)=>
+	
+    // val s1_whit    = VecInit((rtag zip rvalid).map{case(a,b)=>
+    //     VecInit((a zip b zip s1_wmsg).map{ case((r,m),l)=>
+    //         r===l.bits.tag&(RegNext(m)===true.B)
+    //     }).reduce(_||_)
+	// })
+	val s1_whit = VecInit((rtag zip rvalid).map{case(a,b)=>
         VecInit((a zip b zip s1_rmsg).map{ case((r,m),l)=>
             r===l.bits.tag&(RegNext(m)===true.B)
         }).reduce(_||_)
@@ -464,7 +479,20 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 
 	val s1_whitData = Wire(Vec(bankNum,UInt(XLEN.W)))
 	val s1_rhitData = Wire(Vec(numReadport,(Vec(bankNum,UInt(XLEN.W)))))
+	
+	val s1_data  		= Wire(Vec(bankNum,Vec(XLEN/8,UInt(8.W))))
 
+	
+	//32 to 8
+	for(i <- 0 until bankNum){
+		for(j<- 0 until XLEN/8){
+			s1_data(i)(j) := Mux(s1_wmask(i)(j)===1.U,s1_wdata(i)((j+1)*8-1,j*8),s1_whitData(i)((j+1)*8-1,j*8)) 
+		}
+	}
+
+	val s1_redata = s1_data.map{i=>
+								Cat(i.map(_.asUInt).reverse)
+	}
 	val s2_rvalid  		= RegNext(s1_rvalid)
 	val s2_wvalid 		= RegNext(s1_wvalid)
 	val s2_whit 		= RegNext(s1_whit)
@@ -495,28 +523,31 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		s1_rhitData(i) := rdata(i)(s1_rhitWay(i)) 
 	}
 //miss处理单元
-	val reqReady = (!refilled)&(!mshr_full)&(!replaced)&(!s1_wvalid)
+	val reqReady = (!mshr_full)&(!s1_wvalid)&(!missunit.io.refill.valid)&(!missunit.io.replace_req.valid)
     io.read.foreach(r=>
         r.req.ready := (!io.write.req.fire)&reqReady&(!s0_bank_conflict)
     )
 	//
     io.write.req.ready := reqReady
 	missunit.io.missmsg:=s2_missMsg
+	missunit.io.flush := io.flush
 	//for replace
 
 ////////////////////////////////replace//////////////////////////////////
-	missunit.io.replace_req.ready := (!s1_wvalid)
+//not the same time 
+	missunit.io.refill.ready	  := (!s1_wvalid)&(!s1_rvalid.reduce(_||_))
+	missunit.io.replace_req.ready := (!s1_wvalid)&(!s1_rvalid.reduce(_||_))
 	
 	missunit.io.replace_resp.valid   	:= RegNext(replaced)
 	missunit.io.replace_resp.bits.way	:= rp
 	missunit.io.replace_resp.bits.addr 	:= Cat(rtag(rp)(0),RegNext(missunit.io.replace_req.bits.idx))<<offsetWidth
-	missunit.io.replace_resp.bits.dirty	:= rmeta(rp)(0)
+	missunit.io.replace_resp.bits.dirty	:= rmeta(rp)(0).dirty
 	missunit.io.replace_resp.bits.data 	:= rdata(0)(rp)
 	for(i <- 0 until numReadport){
 		when(i.U===0.U){
 			s1_missMsg(i).mask := s1_wmask
 			s1_missMsg(i).data := s1_wdata
-			s1_missMsg(i).memtype := s1_rvalid
+			s1_missMsg(i).memtype := s1_rvalid(i)
 			s1_missMsg(i).addr := Mux(s1_wvalid,Cat(s1_wmsg.bits.tag,s1_wmsg.bits.index)<<offsetWidth,Cat(s1_rmsg(0).bits.tag,s1_rmsg(0).bits.index)<<offsetWidth)
 			s1_missMsg(i).miss := Mux(s1_rvalid(i),!s1_rhit(i).reduce(_||_),
 								Mux(s1_wvalid,!s1_whit.reduce(_||_),false.B))
@@ -538,7 +569,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		val idx = s2_rmsg(i).bits.bank
 		io.read(i).resp.valid 		:= s2_rvalid(i)
 		io.read(i).resp.bits.data	:= s2_rhitData(i)(idx)
-		io.read(i).resp.bits.hit	:= s2_rhit(i)
+		io.read(i).resp.bits.hit	:= s2_rhit(i)&&s2_rvalid(i)
 	}
 	io.write.resp.valid 	:= s2_wvalid
 	io.write.resp.bits.hit 	:= s2_whit.reduce(_||_)
@@ -561,7 +592,8 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			rtag(i)(j)  		:= tag(i)(j).io.dataOut
 			rvalid(i)(j)		:= valid(i)(j)(tag_idx)
 
-			valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0)) := write
+			valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0)) := Mux(write,true.B,
+							Mux(replaced,false.B,valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0))))
 			
 		}
 	}
@@ -578,17 +610,18 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 							Mux(replaced,replaceMsg.idx,
 							Mux(s0_wvalid,s0_wmsg.bits.index,s0_ridx)))
 			val enable  = refilled||(s0_wvalid||(s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced
-			val write	= refilled&&(i.U===refillWay)||s1_wvalid
-			val WData 	= Mux(refilled,refillData(j),s1_wdata(j))
+			val write	= refilled&&(i.U===refillWay)||s1_wvalid&&s1_whit(i)
+			val WData 	= Mux(refilled,refillData(j),s1_redata(j))
 			data(i)(j).io.enable := enable
 			data(i)(j).io.addr   := data_idx
 			data(i)(j).io.write  := write
 			data(i)(j).io.dataIn := WData
 			for(k <- 0 until numReadport){
-				rdata(k)(i)(j)       := Mux(s0_renOH(k),data(i)(j).io.dataOut,0.U)
+				rdata(k)(i)(j)       := Mux(RegNext(s0_renOH(k)),data(i)(j).io.dataOut,0.U)
 			}
 		}
 	}
+	dontTouch(rdata)
 ///////////////////////////////Meta//////////////////////////////
 	for( i <- 0 until meta.length){
 		for(j  <- 0 until meta.head.length){
@@ -601,7 +634,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			meta(i)(j).io.enable := enable
 			meta(i)(j).io.addr   := meta_idx
 			meta(i)(j).io.write  := write 
-			meta(i)(j).io.dataIn := WData
+			meta(i)(j).io.dataIn.dirty := WData
 			rmeta(i)(j)  		:= meta(i)(j).io.dataOut
 			
 		}

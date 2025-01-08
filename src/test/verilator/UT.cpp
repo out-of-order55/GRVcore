@@ -2,7 +2,7 @@
 #include <GlobalVarible.h>
 #include <array>
 
-uint8_t sram[0x1000];
+uint8_t sram[0x2000];
 char *UT_file = "/home/gg/ysyx-workbench/am-kernels/tests/cpu-tests/build/dummy-riscv32-ysyxsoc.bin";
 static long UT_load_img() {
     if (UT_file == NULL) {
@@ -106,9 +106,28 @@ extern "C" void Br_check(int* s0_pc,int* pc,int* target,int* br_type,int* taken,
         *s0_pc   = br_info[s0_ptr].pc     ;
     }
 }
-extern "C" void SRAM_read(int raddr,int *rdata){
+extern "C" void SRAM(int raddr,int *rdata,int ren,int wen,int waddr,int wstrb,int wdata){
     assert(raddr%4==0);
-    *rdata = *((uint32_t *)(sram+raddr));
+    
+    
+
+    int mask = wstrb;
+    if(ren){
+        *rdata = *((uint32_t *)(sram+raddr));
+    }else{
+        *rdata = 0;
+    }
+    if(wen){
+        for(int i=0;i<4;i++){
+            uint8_t byte = (wdata >> 8*i) & 0xFF;  // 最高位（第3字节）
+            if(mask&0x1==1){
+                sram[i+waddr]=byte;
+            }
+            mask = mask>>1;
+        }
+    }
+
+
 }
 extern "C" void check(int finish, int ret){
 

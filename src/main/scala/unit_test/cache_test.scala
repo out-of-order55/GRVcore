@@ -14,12 +14,18 @@ class SIMSRAM extends BlackBox {
         val raddr = Input(UInt(32.W))
         val ren   = Input(Bool())
         val rdata = Output(UInt(32.W))
+
+        val waddr = Input(UInt(32.W))
+        val wen   = Input(Bool())
+        val wstrb = Input(UInt(4.W))
+        val wdata = Input(UInt(32.W))
+        
     })
 
 }
 
 //只用于仿真
-class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule{
+class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule with HasGRVParameters{
     val beatBytes = 4
     val node = AXI4SlaveNode(Seq(AXI4SlavePortParameters(
         Seq(AXI4SlaveParameters(
@@ -38,26 +44,45 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         val sram = Module(new SIMSRAM)
         sram.io.clock := clock
         sram.io.reset := reset
-        val s_idle :: s_wait_ack :: Nil = Enum(2)
+        val s_idle :: s_wait_ack ::s_write_wait_ack::s_write_end::Nil = Enum(4)
 
         val state       = RegInit(s_idle)
         val state_n     = WireInit(state)
         val dataCnt     = Reg(UInt(log2Ceil(in.ar.bits.params.lenBits).W))
         val burstEnable = WireInit(!(in.ar.bits.burst.orR))//只支持fixed突发
+
+        val wen   = RegInit(in.w.fire)
+        val wdata = RegInit(in.w.bits.data)
+        val wstrb = RegInit(in.w.bits.strb)
         // burstEnable:=()
 
         val beatBytes   = WireInit((in.ar.bits.params.dataBits/8).U)
         val transLen    = WireInit((in.ar.bits.len))
         val raddr       = Reg(UInt(32.W))
+        val waddr       = Reg(UInt(32.W))
+
         dontTouch(burstEnable)
         dontTouch(beatBytes)
         state := state_n
         // assert((in.ar.fire)&(burstEnable)&(transLen=/=0.U),"if burst close,AXLEN must be 0")
         raddr := Mux(state===s_idle,in.ar.bits.addr,raddr + beatBytes)
+        waddr := Mux(state===s_idle,in.aw.bits.addr,waddr + beatBytes)
         switch(state){
             is(s_idle){
                 when(in.ar.fire){
                     state_n := s_wait_ack
+                }.elsewhen(in.w.fire&&in.aw.fire){
+                    state_n := s_write_wait_ack
+                }
+            }
+            is(s_write_wait_ack){
+                when(in.w.bits.last){
+                    state_n := s_write_end
+                }
+            }
+            is(s_write_end){
+                when(in.b.fire){
+                    state_n := s_idle
                 }
             }
             is(s_wait_ack){
@@ -78,6 +103,10 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         sram.io.raddr := raddr
         sram.io.ren := state===s_wait_ack
 
+        sram.io.waddr := waddr
+        sram.io.wen     := wen
+        sram.io.wdata   := wdata
+        sram.io.wstrb   := wstrb
         in.ar.ready := (state === s_idle)
         
         assert(!(in.ar.fire && in.ar.bits.size === 3.U), "do not support 8 byte transfter")
@@ -88,12 +117,13 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         in.r.bits.last := state===s_wait_ack&(dataCnt===transLen)
         in.r.valid := (state === s_wait_ack)
 
-        in.aw.ready := false.B
-        in. w.ready := false.B
-        in. b.valid := false.B
+        in.aw.ready := state===s_idle
+        in.w.ready := state===s_write_wait_ack
 
-        assert(!in.aw.valid, "do not support write operations now")
-        assert(!in. w.valid, "do not support write operations now")
+        in.b.valid := state===s_write_end
+        in.b.bits := DontCare
+        
+
     }
 }
 
