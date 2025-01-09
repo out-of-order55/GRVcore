@@ -51,9 +51,9 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         val dataCnt     = Reg(UInt(log2Ceil(in.ar.bits.params.lenBits).W))
         val burstEnable = WireInit(!(in.ar.bits.burst.orR))//只支持fixed突发
 
-        val wen   = RegInit(in.w.fire)
-        val wdata = RegInit(in.w.bits.data)
-        val wstrb = RegInit(in.w.bits.strb)
+        val wen   = RegNext(in.w.fire)
+        val wdata = RegNext(in.w.bits.data)
+        val wstrb = RegNext(in.w.bits.strb)
         // burstEnable:=()
 
         val beatBytes   = WireInit((in.ar.bits.params.dataBits/8).U)
@@ -118,7 +118,7 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         in.r.valid := (state === s_wait_ack)
 
         in.aw.ready := state===s_idle
-        in.w.ready := state===s_write_wait_ack
+        in.w.ready := state=/=s_wait_ack
 
         in.b.valid := state===s_write_end
         in.b.bits := DontCare

@@ -2,7 +2,7 @@
 #include <GlobalVarible.h>
 #include <array>
 
-uint8_t sram[0x2000];
+uint8_t sram[0x8000];
 char *UT_file = "/home/gg/ysyx-workbench/am-kernels/tests/cpu-tests/build/dummy-riscv32-ysyxsoc.bin";
 static long UT_load_img() {
     if (UT_file == NULL) {
@@ -70,11 +70,11 @@ void UT_Init(){
     Log("UT init....");
     uint32_t *start = (uint32_t *)sram;
     BR_init();
-    for(int i=0;i<0x1000/4;i++){
-        *start = i;
+    for(int i=0;i<0x8000/4;i++){
+        *start = 0;
         start++;
     }
-    UT_load_img();
+    // UT_load_img();
     Log("UT init finish");
 }
 extern "C" void Br_check(int* s0_pc,int* pc,int* target,int* br_type,int* taken,int* rs1,

@@ -73,7 +73,7 @@ class RefillMsg(implicit p: Parameters)extends GRVBundle with HasDCacheParameter
 
 class replaceReq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
 
-	val idx         = Output(UInt(XLEN.W))
+	val idx         = Output(UInt(indexWidth.W))
 } 
 class replaceResp(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
 	val addr 		= UInt(XLEN.W)
