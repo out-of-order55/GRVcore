@@ -27,6 +27,7 @@ case class DCacheParams(
     prefetch: Boolean = false,
     blockBytes: Int = 16,
     fetchBytes: Int = 4,
+
     
     ) {
 	
@@ -46,6 +47,7 @@ trait HasDCacheParameters extends HasGRVParameters{
 	val tagWidth    = XLEN-indexWidth-offsetWidth
 	val bankWidth   = log2Ceil(blockBytes/bankNum)
 	val numReadport = 2
+	
 	def AddressSplitter(addr:UInt)(implicit p:Parameters)={
 		val res = Wire(new CacheMsg())
 		res.tag    := addr(XLEN-1,(indexWidth+offsetWidth))
@@ -53,6 +55,23 @@ trait HasDCacheParameters extends HasGRVParameters{
 		res.offset := addr((offsetWidth)-1,0)
 		res.bank   := addr(offsetWidth-1,offsetWidth-bankWidth)
 		res
+	}
+	def newRdataHelper(select: UInt, rdata: UInt): UInt = {
+		val DataLookupTable = Seq(
+		"b000".U -> Cat(Fill(XLEN-8,0.U),rdata(7, 0)),
+		"b001".U -> Cat(Fill(XLEN-16,0.U),rdata(15, 0)),
+		"b010".U -> rdata(31, 0),
+		"b100".U -> Cat(Fill(XLEN-8,rdata(7)),rdata(7, 0)),
+		"b101".U -> Cat(Fill(XLEN-16,rdata(7)),rdata(15, 0))	 
+
+		)
+		MuxLookup(select,0.U)(DataLookupTable)
+	}
+	def BankAlign(addr:UInt):UInt={
+		(addr>>offsetWidth)<<offsetWidth
+	}
+	def OffsetAlign(addr:UInt):UInt={
+		(addr>>(log2Ceil(XLEN/8)))<<(log2Ceil(XLEN/8))
 	}
 }
 /* 
@@ -166,7 +185,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 
 			// ||io.refill.bits.refill_addr===io.missmsg(i).addr&&io.refill.fire
 					//一方面和mshr的相等，另一方面和refill的相等，最后就是两个miss相等，这个没什么影响
-        req(i)          	:= io.missmsg(i).miss&&(!check_same)
+        req(i)          	:= io.missmsg(i).miss&&(!check_same)&&(!io.full)
         reqData(i).addr 	:= io.missmsg(i).addr
         reqData(i).data 	:= io.missmsg(i).data
 		reqData(i).mask 	:= io.missmsg(i).mask
@@ -453,10 +472,10 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 
 	val s1_rmsg     	= RegNext(s0_rmsg)
 
-	val s1_rvalid   	= RegNext(VecInit(s0_rvalid))
+	val s1_rvalid   	= RegNext(VecInit(s0_rvalid.map{i=>i&(!io.flush)}))
 
 	val s1_wdata 		= RegNext(s0_wdata)
-	val s1_wvalid       = RegNext(s0_wvalid   )
+	val s1_wvalid       = RegNext(s0_wvalid&(!io.flush)   )
 	val s1_waddr        = RegNext(s0_waddr    )
 	val s1_wmsg         = RegNext(s0_wmsg     )
 	val s1_wmask        = RegNext(s0_wmask)
@@ -502,9 +521,10 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	val s1_redata = s1_data.map{i=>
 								Cat(i.map(_.asUInt).reverse)
 	}
-	val s2_rvalid  		= RegNext(s1_rvalid)
-	val s2_wvalid 		= RegNext(s1_wvalid)
+	val s2_rvalid  		= RegNext(VecInit(s1_rvalid.map{i=>i&(!io.flush)}))
+	val s2_wvalid 		= RegNext(s1_wvalid&(io.flush))
 	val s2_whit 		= RegNext(s1_whit)
+	val s2_wmsg         = RegNext(s1_wmsg     )
 	val s2_rmsg     	= RegNext(s1_rmsg)
 	val s2_rhit 		= RegNext(VecInit(s1_rhit.map{hit=>
 		hit.reduce(_||_)
@@ -532,14 +552,14 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		s1_rhitData(i) := rdata(i)(s1_rhitWay(i)) 
 	}
 //miss处理单元
-	val reqReady = (!mshr_full)&(!s1_wvalid)&(!missunit.io.refill.valid)&(!missunit.io.replace_req.valid)
+	val reqReady = (!mshr_full)&(!s1_wvalid)&(!missunit.io.refill.valid)&(!missunit.io.replace_req.valid)&(!io.flush)
     io.read.foreach(r=>
         r.req.ready := (!io.write.req.fire)&reqReady&(!s0_bank_conflict)
     )
 	//
     io.write.req.ready := reqReady
-	missunit.io.missmsg:=s2_missMsg
-	missunit.io.flush := io.flush
+	missunit.io.missmsg:= s2_missMsg
+	missunit.io.flush  := io.flush
 	//for replace
 
 ////////////////////////////////replace//////////////////////////////////
@@ -580,9 +600,12 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		io.read(i).resp.valid 		:= s2_rvalid(i)
 		io.read(i).resp.bits.data	:= s2_rhitData(i)(idx)
 		io.read(i).resp.bits.hit	:= s2_rhit(i)&&s2_rvalid(i)
+		io.read(i).resp.bits.replay	:= mshr_full
 	}
 	io.write.resp.valid 	:= s2_wvalid
+	io.write.resp.bits.addr := Cat(s2_wmsg.bits.tag,s2_wmsg.bits.index)<<offsetWidth
 	io.write.resp.bits.hit 	:= s2_whit.reduce(_||_)
+	io.write.resp.bits.replay:= mshr_full
 
 
 ///////////////////////////////////////////////////////////////////

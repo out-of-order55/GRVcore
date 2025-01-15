@@ -8,6 +8,7 @@ reg clock,reset;
 
 
 initial begin
+
     clock=0;
     reset=1;
     #100;

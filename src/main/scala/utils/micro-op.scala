@@ -35,8 +35,8 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     val imm_packed       = UInt(LONGEST_IMM_SZ.W) 
 
     val rob_idx          = UInt(log2Ceil(ROBEntry+1).W)
-    // val ldq_idx          = UInt(ldqAddrSz.W)
-    // val stq_idx          = UInt(stqAddrSz.W)
+    val ldq_idx          = UInt(log2Ceil(numLDQs+1).W)
+    val stq_idx          = UInt(log2Ceil(numSTQs+1).W)
     // val rxq_idx          = UInt(log2Ceil(numRxqEntries).W)
     
     val pdst             = UInt(pregSz.W)

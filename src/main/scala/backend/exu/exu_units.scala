@@ -17,7 +17,6 @@ import scala.collection.mutable.{ArrayBuffer}
 class ExuResp(implicit p: Parameters) extends GRVBundle{
     val uop        = new MicroOp
     val wb_data     = UInt(XLEN.W)
-    
 }
 class ExuReq(implicit p: Parameters) extends GRVBundle{
     val uop        = new MicroOp

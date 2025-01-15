@@ -18,6 +18,9 @@ case class CoreParams(
     numLregs:Int  = 32,
     numPregs:Int  = 64,
     ROBEntry:Int  = 16,
+	numLDQs	:Int = 8,
+	numSTQs :Int = 8,
+    numSBs  :Int = 8,
     mulDiv: Option[freechips.rocketchip.rocket.MulDivParams] = Some(MulDivParams(divEarlyOut=true)),
     issueParams :Seq[IssueParams] =  Seq(                
         IssueParams(issueWidth=2, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=2),
@@ -57,6 +60,9 @@ trait HasGRVParameters {
     val iqentries = CoreParams.iqueueParams.nEntries
     val ROBEntry  = CoreParams.ROBEntry
     val issueParams = CoreParams.issueParams
+	val numLDQs		 = CoreParams.numLDQs
+	val numSTQs		 = CoreParams.numSTQs
+    val numSBs	 	 = CoreParams.numSBs
     val mulDivParams= CoreParams.mulDiv.getOrElse(MulDivParams())
     val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
     val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get

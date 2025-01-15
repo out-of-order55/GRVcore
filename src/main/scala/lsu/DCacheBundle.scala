@@ -22,6 +22,7 @@ class ReadReq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
 class ReadResp(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
     val data = UInt(XLEN.W)
     val hit  = Bool()
+    val replay = Bool()
 }
 class WriteReq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
     val data = Vec(bankNum,UInt(XLEN.W))
@@ -30,6 +31,8 @@ class WriteReq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters
 }
 class WriteResp(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
     val hit = Bool()
+    val addr= UInt(XLEN.W)
+    val replay = Bool()
 }
 
 class DCacheReadIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
