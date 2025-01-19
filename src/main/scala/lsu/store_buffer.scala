@@ -50,8 +50,8 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
 ////////////////////////////enq logic   ///////////////////////////// 
     val do_enq = io.sb_req.fire
     val align_addr   = BankAlign(io.sb_req.bits.addr)
-    val bank         = io.sb_req.bits.addr(offsetWidth-1,bankWidth-1)
-
+    val bank         = io.sb_req.bits.addr(offsetWidth-1,bankWidth)
+    dontTouch(bank)
     io.sb_req.ready := (!full)
     val checkOH = store_buf.map{buf=>
         buf.addr===io.sb_req.bits.addr&&(buf.flag.valid)
@@ -61,8 +61,9 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val sb_mask   = store_buf(check_idx).mask(bank)
     val enq_data  = io.sb_req.bits.data
     val enq_mask  = io.sb_req.bits.mask
-    val enq_sels  = store_buf.map{buf=> (!buf.flag.valid)}
-    val enq_idx   = PriorityEncoder(enq_sels)
+    val enq_ops  = store_buf.map{buf=> (!buf.flag.valid)}
+    val enq_idx   = PriorityEncoder(enq_ops)
+    val enq_sels  = PriorityEncoderOH(enq_ops)
     val SplitData = Wire(Vec(XLEN/8,UInt(8.W)))
 
 
@@ -99,13 +100,14 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     }
     val timeout = timeout_sels.reduce(_||_)
     val timeout_idx = PriorityEncoder(timeout_sels)
-    val alloc_sels= store_buf.map{buf=>
-        buf.flag.valid&&(!buf.flag.timeout)
+    val alloc_ops= store_buf.map{buf=>
+        buf.flag.valid&&(!buf.flag.timeout)&&(!buf.flag.inflight)
     }
+    val alloc_sels = PriorityEncoderOH(alloc_ops)
     val alloc_idx = PriorityEncoder(alloc_sels)
     val do_deq      = io.dcache_write.req.fire
 
-
+    dontTouch(almost_full)
     io.dcache_write.req.valid     := (!empty)&&(almost_full||timeout_sels.reduce(_||_))
     io.dcache_write.req.bits.addr := Mux(timeout,store_buf(timeout_idx).addr,
                                     store_buf(alloc_idx).addr)
@@ -138,9 +140,9 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val refill_valid = io.refillMsg.refilled
     val refill_addr  = io.refillMsg.refill_addr
     //only one 
-    val refill_sels = store_buf.map{buf=>
+    val refill_sels = VecInit(store_buf.map{buf=>
         buf.flag.inflight&&refill_addr===buf.addr&&refill_valid
-    }
+    })
     val refill_sameblock_sels = store_buf.map{buf=>
         buf.flag.same_inflight&&buf.addr===resp_addr
     }
@@ -149,19 +151,21 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
 
 
 //////////////////////////////store buf///////////////////////////////////
+    dontTouch(refill_sels)
+    dontTouch(refill_valid)
     for(i<- 0 until numSBs){
         store_buf(i).retry_cnt          := Mux(store_buf(i).flag.timeout,store_buf(i).retry_cnt+1.U,0.U)
-        store_buf(i).flag.inflight      := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels.reduce(_||_),false.B,
+        store_buf(i).flag.inflight      := Mux((resp_sels(i)&&resp_success)||(refill_valid&&refill_sels(i)),false.B,
                                             Mux(timeout_sels(i)&&timeout&&do_deq,true.B,
-                                            Mux(alloc_sels(i)&&(!timeout)&&do_deq,true.B,store_buf(alloc_idx).flag.inflight ))) 
+                                            Mux(alloc_sels(i)&&(!timeout)&&do_deq,true.B,store_buf(i).flag.inflight ))) 
         
-        store_buf(i).flag.valid         := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels.reduce(_||_),false.B,
+        store_buf(i).flag.valid         := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),false.B,
                                             Mux(do_enq&&enq_sels(i),true.B,store_buf(i).flag.valid ))
         
         store_buf(i).flag.timeout       := Mux(resp_sels(i)&&resp_replay ,true.B ,
-                                        Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels.reduce(_||_),false.B,store_buf(i).flag.timeout)) 
+                                        Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),false.B,store_buf(i).flag.timeout)) 
 
-        store_buf(i).flag.same_inflight := Mux((resp_sels(i)||resp_sameblock_sels(i))&&resp_success||refill_valid&&refill_sels.reduce(_||_),
+        store_buf(i).flag.same_inflight := Mux((resp_sels(i)||resp_sameblock_sels(i))&&resp_success||refill_valid&&refill_sels(i),
                                         false.B,
                                         Mux(do_enq&&checkOH.reduce(_||_)&&is_has_same_entry&&enq_sels(i),true.B,store_buf(i).flag.same_inflight))  
     }

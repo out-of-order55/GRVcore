@@ -58,10 +58,10 @@ class LDQPipeIO(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
     val s2_wb_req      = Input(Vec(numReadport,Bool()))
     val s2_miss        = Input(Vec(numReadport,Bool()))
 }
-class LDQDisIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val enq     = Vec(coreWidth,Flipped(Decoupled(new MicroOp)))//dispatch
-    val enq_idx = (Vec(coreWidth,Valid(UInt(log2Ceil(numLDQs).W))))//dispatch
-}
+// class LDQDisIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
+//     val enq     = Vec(coreWidth,Flipped(Decoupled(new MicroOp)))//dispatch
+//     val enq_idx = (Vec(coreWidth,Valid(UInt(log2Ceil(numLDQs).W))))//dispatch
+// }
 /* 这里设置mask是为了简便forward逻辑，
 只需要对mask为1的区域进行forward检查，
 如果没有mask，首先要检查addr相等的，其次还要找出最近的一个比ld旧的store
@@ -86,7 +86,7 @@ class LDQResp(implicit p: Parameters) extends GRVBundle with HasDCacheParameters
 class LDQBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
 
 
-    val dis     = new LDQDisIO//写入
+    val dis     = new DisIO//写入
     val pipe    = new LDQPipeIO//写入地址，更新状态
 
     val check_unorder = Flipped(Valid(new CheckRAWReq)) 

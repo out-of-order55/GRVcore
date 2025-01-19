@@ -137,7 +137,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	//MSHR ENQ
     val enq_idxs = VecInit.tabulate(numReadport)(i => PopCount(req.take(i)))
     val enq_offset = VecInit(enq_idxs.map(_+mshr_enq_ptr(mshrSz-1,0)))
-	val numEnq = PopCount(req)
+	val numEnq = PopCount(io.missmsg.map(_.miss))
 	val numValid = PopCount(mshrs.map(_.valid))
 	val enqNextPtr = mshr_enq_ptr + numEnq
 	io.full := (mshr_enq_ptr(mshrSz)=/=mshr_deq_ptr(mshrSz)&&(numEnq+mshr_enq_ptr)(mshrSz-1,0)>mshr_deq_ptr(mshrSz-1,0))||
@@ -460,7 +460,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	val s0_rmsg    = Wire(Vec(numReadport,Valid(new CacheMsg())))
 	
 
-
+	io.refillMsg := refill
 	val s0_wvalid = io.write.req.fire
 	val s0_waddr  = io.write.req.bits.addr
 	val s0_wdata  = io.write.req.bits.data
@@ -522,7 +522,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 								Cat(i.map(_.asUInt).reverse)
 	}
 	val s2_rvalid  		= RegNext(VecInit(s1_rvalid.map{i=>i&(!io.flush)}))
-	val s2_wvalid 		= RegNext(s1_wvalid&(io.flush))
+	val s2_wvalid 		= RegNext(s1_wvalid&(!io.flush))
 	val s2_whit 		= RegNext(s1_whit)
 	val s2_wmsg         = RegNext(s1_wmsg     )
 	val s2_rmsg     	= RegNext(s1_rmsg)

@@ -46,6 +46,7 @@ class DCacheWriteIO(implicit p: Parameters) extends GRVBundle with HasDCachePara
 class DCacheBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val read = Vec(numReadport,new DCacheReadIO)
     val write = new DCacheWriteIO
+    val refillMsg= Output(new RefillMsg())
     val flush   = Input(Bool())
     val s1_kill = Input(Bool())
     val s2_kill = Input(Bool())

@@ -17,15 +17,15 @@ class CheckRAWResp(implicit p: Parameters) extends GRVBundle with HasDCacheParam
     val redirect    = Bool()
     val uop         = new MicroOp
 }
-class LDReq(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val uop          = new MicroOp
-    val rs1_data     = UInt(XLEN.W)
-    val rs2_data     = UInt(XLEN.W)
-}
+// class LDReq(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
+//     val uop          = new MicroOp
+//     val rs1_data     = UInt(XLEN.W)
+//     val rs2_data     = UInt(XLEN.W)
+// }
 class LDBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val dis          = new LDQDisIO//写入
+    val dis          = new DisIO//写入
 
-    val req          = Vec(numReadport,Flipped(Valid(new LDReq)))
+    val req          = Vec(numReadport,Flipped(Valid(new LSUReq)))
     val read         = Vec(numReadport,Flipped(new DCacheReadIO))
 
     val refillMsg= Input(new RefillMsg())

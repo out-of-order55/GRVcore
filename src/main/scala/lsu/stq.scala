@@ -6,6 +6,7 @@ import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
 import org.chipsalliance.cde.config._
+import freechips.rocketchip.regmapper.RegField.w
 /* 
 STQ需要的内容：
 1.地址
@@ -45,7 +46,7 @@ class STQCommit(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
     val mask    =   UInt((XLEN/8).W)
 }
 class STQBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val dis          = new STDisIO//写入
+    val dis          = new DisIO//写入
     
     val pipe           = new STQPipeIO//写入地址和数据
     val sb_req        = (Decoupled(new STQCommit))
@@ -82,7 +83,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
 
     val numValid = PopCount(stq.map(_.flag.allocated))
     val ValidVec = stq.map{i=>i.flag.allocated&&i.flag.addrvalid&&i.flag.datavalid}
-    val numEnq = PopCount(io.dis.enq.map(_.valid))
+    val numEnq = PopCount(io.dis.enq.map{i=>i.valid&&i.bits.mem_cmd===M_XWR})
 
     
     val commit_valid  = VecInit((0 until coreWidth).map{i=>
@@ -110,17 +111,17 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
         stq_enq_ptr := stq_enq_ptr + numEnq
     }
 ////////////////////////////enq logic   ///////////////////////////// 
-    val enq_idxs = VecInit.tabulate(coreWidth)(i => PopCount(io.dis.enq.map(_.fire).take(i)))
+    val enq_idxs = VecInit.tabulate(coreWidth)(i => PopCount(io.dis.enq.map{i=>i.fire&&i.bits.mem_cmd===M_XWR}.take(i)))
     val enq_offset = VecInit(enq_idxs.map(_+stq_enq_ptr(stqSz-1,0)))
-    // dontTouch(enq_idxs)
-    // dontTouch(enq_offset)
+    dontTouch(enq_idxs)
+    dontTouch(enq_offset)
     when(io.flush){
         for(i <- 0 until numSTQs){
             stq(i).flag := 0.U.asTypeOf(new STQFlag)
         }
     }
     for(i <- 0 until coreWidth){
-        val do_enq = io.dis.enq(i).fire
+        val do_enq = io.dis.enq(i).fire&&io.dis.enq(i).bits.mem_cmd===M_XWR&&(!full)
         for(j <- 0 until numSTQs){
             when(do_enq&&enq_offset(i)===j.U){
                 stq(j).flag.allocated := true.B
@@ -135,7 +136,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val s0_data = io.pipe.s0_data
     val s0_mask = io.pipe.s0_mask
     val s0_idx  = io.pipe.s0_uop.bits.stq_idx(log2Ceil(numSTQs)-1,0)
-    val s0_valid= io.pipe.s0_uop.valid
+    val s0_valid= io.pipe.s0_uop.valid&&io.pipe.s0_uop.bits.mem_cmd===M_XWR
 
     stq(s0_idx).addr := Mux(s0_valid,s0_addr,stq(s0_idx).addr)
     stq(s0_idx).data := Mux(s0_valid,s0_data,stq(s0_idx).data)
@@ -179,14 +180,22 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     for(i<- 0 until coreWidth){
         val commit_idx   = io.commit.commit_uops(i).stq_idx(log2Ceil(numSTQs)-1,0)
         val commit_valid = io.commit.valid(i)
-        stq(commit_idx).flag.commited := Mux(commit_valid,true.B,stq(commit_idx).flag.commited)
+        when(commit_valid){
+            stq(commit_idx).flag.commited := true.B
+        }
+        //  Mux(commit_valid,true.B,stq(commit_idx).flag.commited)
     }
 
 ///////////////////////////TO STORE BUFFER//////////////////////////////
     val deq_ptr_value = stq_deq_ptr(log2Ceil(numSTQs)-1,0)
+    dontTouch(deq_ptr_value)
     io.sb_req.valid := stq(deq_ptr_value).flag.commited
     val can_go = io.sb_req.fire
-    stq(deq_ptr_value) := Mux(can_go,0.U.asTypeOf((new STQEntry)),stq(deq_ptr_value))
+    dontTouch(can_go)
+    when(can_go){
+        stq(deq_ptr_value).flag := 0.U.asTypeOf(new STQFlag)
+    }
+    
     io.sb_req.bits.addr := stq(deq_ptr_value).addr
     io.sb_req.bits.data := stq(deq_ptr_value).data
     io.sb_req.bits.mask := stq(deq_ptr_value).mask

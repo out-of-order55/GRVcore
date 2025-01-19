@@ -6,20 +6,13 @@ import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
 import org.chipsalliance.cde.config._
-class STDisIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val enq     = Vec(coreWidth,Flipped(Decoupled(new MicroOp)))//dispatch
-    val enq_idx = (Vec(coreWidth,Valid(UInt(log2Ceil(numLDQs).W))))//dispatch
-}
-class STReq(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val uop          = new MicroOp
-    val rs1_data     = UInt(XLEN.W)
-    val rs2_data     = UInt(XLEN.W)
-}
+
+
 
 class STBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val dis          = new STDisIO//写入
+    val dis          = new DisIO//写入
 
-    val req          = Flipped(Valid(new STReq))
+    val req          = Flipped(Valid(new LSUReq))
     val write        = Flipped(new DCacheWriteIO)//used by sb
 
 
