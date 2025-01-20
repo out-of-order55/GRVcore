@@ -127,10 +127,10 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val ldq_enq_ptr  = RegInit(0.U(log2Ceil(numLDQs+1).W))
     val ldq_deq_ptr  = RegInit(0.U(log2Ceil(numLDQs+1).W))
     val numValid = PopCount(ldq.map(_.flag.allocated))
-    val numEnq = PopCount(io.dis.enq.map(_.valid))
+    val numEnq = PopCount(io.dis.enq.map{i=>i.valid&&i.bits.mem_cmd===M_XRD})
 
     val deq  = VecInit((0 until coreWidth).map{i=>
-                io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XRD
+        io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XRD
     })
 
     val numDeq = PopCount(deq)
@@ -150,17 +150,17 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     .elsewhen(numEnq.orR){
         ldq_enq_ptr := ldq_enq_ptr + numEnq
     }
-    val enq_idxs = VecInit.tabulate(coreWidth)(i => PopCount(io.dis.enq.map(_.fire).take(i)))
+    val enq_idxs = VecInit.tabulate(coreWidth)(i => PopCount(io.dis.enq.map{i=>i.fire&&i.bits.mem_cmd===M_XRD}.take(i)))
     val enq_offset = VecInit(enq_idxs.map(_+ldq_enq_ptr(ldqSz-1,0)))
     // dontTouch(enq_idxs)
     // dontTouch(enq_offset)
 
     for(i <- 0 until coreWidth){
-        val do_enq = io.dis.enq(i).fire
+        val do_enq = io.dis.enq(i).fire&&io.dis.enq(i).bits.mem_cmd===M_XRD
         for(j <- 0 until numLDQs){
             when(do_enq&&enq_offset(i)===j.U){
                 ldq(j).flag.allocated := true.B
-                ldq(j).uop := io.dis.enq(i).bits
+                // ldq(j).uop := io.dis.enq(i).bits
             }
         }
         io.dis.enq_idx(i).bits := enq_offset(i)
@@ -173,6 +173,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val s0_idx      = io.pipe.s0_uop.map(_.bits.ldq_idx)
     for(i <- 0 until numReadport){
         when(s0_valid(i)){
+            ldq(s0_idx(i)).uop := io.pipe.s0_uop(i).bits
             ldq(s0_idx(i)).addr := s0_waddr(i)
         }
     }
@@ -202,12 +203,12 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
 
 //////////////////////refill//////////////////////
     val refillOH = ldq.map{ldq=>
-        ldq.addr===io.refillMsg.refill_addr&&io.refillMsg.refilled
+        BankAlign(ldq.addr)===io.refillMsg.refill_addr&&io.refillMsg.refilled
     }
     
     //refill的数据mask总是全为1
     val refill_idx  = PriorityEncoder(refillOH)
-    val refill_bank =  (ldq(refill_idx).addr)(offsetWidth-1,bankWidth-1)
+    val refill_bank =  (ldq(refill_idx).addr)(offsetWidth-1,bankWidth)
     val refill_data = io.refillMsg.refillData(refill_bank)
     val final_data  = Wire(UInt(XLEN.W))
     val ldq_data = ldq(refill_idx).data

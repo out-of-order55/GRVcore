@@ -9,6 +9,7 @@ import org.chipsalliance.cde.config._
 /* 
 当指令提交写入store buffer（类似于小的Cache）
 如果写入请求在store buffer找到地址，直接合并，如果没找到地址，直接分配新的表项
+目前两项会出错，暂时没有找到原因
 */
 class SBBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val dcache_write  = Flipped(new DCacheWriteIO)
@@ -53,9 +54,10 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val bank         = io.sb_req.bits.addr(offsetWidth-1,bankWidth)
     dontTouch(bank)
     io.sb_req.ready := (!full)
-    val checkOH = store_buf.map{buf=>
-        buf.addr===io.sb_req.bits.addr&&(buf.flag.valid)
-    }
+    val checkOH = VecInit(store_buf.map{buf=>
+        buf.addr===BankAlign(io.sb_req.bits.addr)&&(buf.flag.valid)
+    })
+    // dontTouch(checkOH)
     val check_idx = OHToUInt(checkOH)//only 1
     val sb_data   = store_buf(check_idx).data(bank)
     val sb_mask   = store_buf(check_idx).mask(bank)
@@ -66,12 +68,13 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val enq_sels  = PriorityEncoderOH(enq_ops)
     val SplitData = Wire(Vec(XLEN/8,UInt(8.W)))
 
-
+    assert(check_idx<numSBs.U)
     for(i <- 0 until XLEN/8){
-        SplitData(i) := Mux(enq_mask(i)===1.U,enq_data((i+1)*8-1,i*8),
-                        Mux(sb_mask(i)===1.U,sb_data((i+1)*8-1,i*8),0.U))
+        SplitData(i) := Mux(enq_mask(i)===1.U,enq_data((i+1)*8-1,i*8),sb_data((i+1)*8-1,i*8))
     }
     val is_has_same_entry = store_buf(check_idx).flag.inflight
+    // dontTouch(is_has_same_entry)
+    dontTouch(do_enq)
     when(do_enq){
         when(checkOH.reduce(_||_)){//merge entry
             when(is_has_same_entry){
@@ -82,6 +85,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
 
             }.otherwise{
                 store_buf(check_idx).data(bank) := Cat(SplitData.map(_.asUInt).reverse)
+                // store_buf(check_idx).data(bank) := enq_data
                 store_buf(check_idx).mask(bank) := sb_mask|enq_mask
             }
             // for()
@@ -108,7 +112,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val do_deq      = io.dcache_write.req.fire
 
     dontTouch(almost_full)
-    io.dcache_write.req.valid     := (!empty)&&(almost_full||timeout_sels.reduce(_||_))
+    io.dcache_write.req.valid     := (!empty)&&(almost_full&&(alloc_ops.reduce(_||_))||timeout_sels.reduce(_||_))
     io.dcache_write.req.bits.addr := Mux(timeout,store_buf(timeout_idx).addr,
                                     store_buf(alloc_idx).addr)
     io.dcache_write.req.bits.data := Mux(timeout,store_buf(timeout_idx).data,
@@ -155,15 +159,16 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     dontTouch(refill_valid)
     for(i<- 0 until numSBs){
         store_buf(i).retry_cnt          := Mux(store_buf(i).flag.timeout,store_buf(i).retry_cnt+1.U,0.U)
-        store_buf(i).flag.inflight      := Mux((resp_sels(i)&&resp_success)||(refill_valid&&refill_sels(i)),false.B,
+        store_buf(i).flag.inflight      := Mux(((resp_sels(i)&&resp_success)||resp_replay)||(refill_valid&&refill_sels(i)),false.B,
                                             Mux(timeout_sels(i)&&timeout&&do_deq,true.B,
                                             Mux(alloc_sels(i)&&(!timeout)&&do_deq,true.B,store_buf(i).flag.inflight ))) 
         
         store_buf(i).flag.valid         := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),false.B,
-                                            Mux(do_enq&&enq_sels(i),true.B,store_buf(i).flag.valid ))
+                                            Mux(do_enq&&enq_sels(i)&&((!checkOH.reduce(_||_)||
+                                            (is_has_same_entry)&&(checkOH.reduce(_||_)))),true.B,store_buf(i).flag.valid ))
         
         store_buf(i).flag.timeout       := Mux(resp_sels(i)&&resp_replay ,true.B ,
-                                        Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),false.B,store_buf(i).flag.timeout)) 
+                                        Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i)||store_buf(i).retry_cnt===timeOut,false.B,store_buf(i).flag.timeout)) 
 
         store_buf(i).flag.same_inflight := Mux((resp_sels(i)||resp_sameblock_sels(i))&&resp_success||refill_valid&&refill_sels(i),
                                         false.B,

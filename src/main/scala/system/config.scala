@@ -18,9 +18,9 @@ case class CoreParams(
     numLregs:Int  = 32,
     numPregs:Int  = 64,
     ROBEntry:Int  = 16,
-	numLDQs	:Int = 8,
-	numSTQs :Int = 8,
-    numSBs  :Int = 8,
+	numLDQs	:Int = 4,
+	numSTQs :Int = 4,
+    numSBs  :Int = 4,
     mulDiv: Option[freechips.rocketchip.rocket.MulDivParams] = Some(MulDivParams(divEarlyOut=true)),
     issueParams :Seq[IssueParams] =  Seq(                
         IssueParams(issueWidth=2, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=2),

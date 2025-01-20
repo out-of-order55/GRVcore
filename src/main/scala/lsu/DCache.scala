@@ -15,7 +15,7 @@ case class DCacheParams(
     nSets: Int = 256,
     nWays: Int = 2,
     rowBits: Int = 128,
-    numMSHRs:Int = 8,
+    numMSHRs:Int = 2,
     // nTLBSets: Int = 1,
     // nTLBWays: Int = 32,
     // nTLBBasePageSectors: Int = 4,
@@ -137,11 +137,12 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	//MSHR ENQ
     val enq_idxs = VecInit.tabulate(numReadport)(i => PopCount(req.take(i)))
     val enq_offset = VecInit(enq_idxs.map(_+mshr_enq_ptr(mshrSz-1,0)))
-	val numEnq = PopCount(io.missmsg.map(_.miss))
-	val numValid = PopCount(mshrs.map(_.valid))
-	val enqNextPtr = mshr_enq_ptr + numEnq
-	io.full := (mshr_enq_ptr(mshrSz)=/=mshr_deq_ptr(mshrSz)&&(numEnq+mshr_enq_ptr)(mshrSz-1,0)>mshr_deq_ptr(mshrSz-1,0))||
-    numValid===numMSHRs.U
+	val num_enq = PopCount(io.missmsg.map(_.miss))
+	val num_valid = PopCount(mshrs.map(_.valid))
+	val num_do_enq   = PopCount(req)
+	val enq_next_ptr = mshr_enq_ptr + num_do_enq
+	io.full := (mshr_enq_ptr(mshrSz)=/=mshr_deq_ptr(mshrSz)&&(num_enq+mshr_enq_ptr)(mshrSz-1,0)>mshr_deq_ptr(mshrSz-1,0))||
+    num_valid===numMSHRs.U
 	val empty = (mshr_enq_ptr(mshrSz)===mshr_deq_ptr(mshrSz))&&mshr_enq_ptr(mshrSz-1,0)===mshr_deq_ptr(mshrSz-1,0)
 	dontTouch(empty)
 	//normal->no miss req->has miss  wait_ack->wait data end->receive data
@@ -216,7 +217,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		}
 	}
 	.elsewhen(req.reduce(_||_)){
-		mshr_enq_ptr := enqNextPtr
+		mshr_enq_ptr := enq_next_ptr
 	}
 	when(io.refill.fire){
 		mshrs(mshr_deq_ptr).valid := false.B
@@ -454,7 +455,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	val refillWay 		= WireInit(refill.refillWay)
 	val replaceMsg 		= WireInit(missunit.io.replace_req.bits)
 	val replaced  		 = WireInit(missunit.io.replace_req.fire)
-	val s0_bank_conflict = WireInit(false.B)
+	val s0_bank_conflict = WireInit(VecInit.fill(numReadport)(false.B))
 	val s0_rvalid = io.read.map(_.req.fire)
 	val s0_raddr  = io.read.map(_.req.bits.addr)
 	val s0_rmsg    = Wire(Vec(numReadport,Valid(new CacheMsg())))
@@ -531,7 +532,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	}))
 	val s2_rhitData 	= RegNext(s1_rhitData)
 	val s2_missMsg 		= RegNext(s1_missMsg)
-
+	// val missMsg         = WireInit(VecInit.fill(numReadport)(0.U.asTypeOf(new DCacheMissMsg())))
 //random替换算法
 	val rp = RegInit(0.U(log2Ceil(nWays).W))
 	rp := rp + 1.U 
@@ -543,21 +544,31 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		s0_rmsg(i).bits := AddressSplitter(io.read(i).req.bits.addr)
 		s0_rmsg(i).valid:= io.read(i).req.valid 
 	}
-	s0_bank_conflict := PopCount(s0_rmsg.map{i=>
-					UIntToOH(i.bits.bank)
-	}.reduce(_|_))=/=numReadport.U
+	dontTouch(s0_rmsg)
+	// s0_bank_conflict := PopCount(s0_rmsg.map{i=>
+	// 				UIntToOH(i.bits.bank)
+	// }.reduce(_|_))=/=numReadport.U
 
+	// s0_bank_conflict := 
+	for(i<- 0 until numReadport){
+		s0_bank_conflict(i) := VecInit((0 until i).foldLeft(false.B){(bank,idx)=>
+			s0_rmsg(idx).bits.bank===s0_rmsg(i).bits.bank
+		}).reduce(_||_)
+	}
+	dontTouch(s0_bank_conflict)
 	s1_whitData := rdata(0)(s1_whitWay)
 	for(i <- 0 until numReadport){
 		s1_rhitData(i) := rdata(i)(s1_rhitWay(i)) 
 	}
 //miss处理单元
 	val reqReady = (!mshr_full)&(!s1_wvalid)&(!missunit.io.refill.valid)&(!missunit.io.replace_req.valid)&(!io.flush)
-    io.read.foreach(r=>
-        r.req.ready := (!io.write.req.fire)&reqReady&(!s0_bank_conflict)
-    )
+    io.read zip s0_bank_conflict foreach{case(r,conflict)=>
+        r.req.ready := (!io.write.req.fire)&reqReady&(!conflict)
+	}
 	//
     io.write.req.ready := reqReady
+
+
 	missunit.io.missmsg:= s2_missMsg
 	missunit.io.flush  := io.flush
 	//for replace

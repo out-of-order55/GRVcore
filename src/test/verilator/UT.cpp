@@ -71,7 +71,7 @@ void UT_Init(){
     uint32_t *start = (uint32_t *)sram;
     BR_init();
     for(int i=0;i<0x8000/4;i++){
-        *start = 0;
+        *start = i;
         start++;
     }
     // UT_load_img();

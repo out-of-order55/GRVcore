@@ -43,6 +43,7 @@ class LDBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameter
 
 面积主要在检查违例上，可以去尝试优化比较逻辑，
 时钟频率可以达到1GHz
+目前对于load没有进行replay，当bank冲突和mshr满的时候都需要replay
  */
 class LDPipeline(implicit p: Parameters) extends GRVModule with HasDCacheParameters
 with freechips.rocketchip.rocket.constants.MemoryOpConstants{
@@ -59,7 +60,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val s0_valid = VecInit(io.read map{i=>
         i.req.fire
     })
-
+    dontTouch(s0_valid)
     val s0_raddr = Wire(Vec(numReadport,UInt(XLEN.W)))
     val s0_uop   = WireInit(VecInit(io.req.map(_.bits.uop)))
     // val s0_check_uop = Wire(new MicroOp)
@@ -111,7 +112,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     for(i <- 0 until numReadport){
         s0_raddr(i)                 := (io.req(i).bits.rs1_data.asSInt + io.req(i).bits.uop.imm_packed(19,8).asSInt).asUInt
         io.read(i).req.valid        := io.req(i).valid
-        io.read(i).req.bits.addr    := BankAlign(s0_raddr(i))
+        io.read(i).req.bits.addr    := OffsetAlign(s0_raddr(i))
     }
 ///////////////////////////to LDQ///////////////////////////////////
     for(i <- 0 until numReadport){
