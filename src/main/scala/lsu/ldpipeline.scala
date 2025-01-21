@@ -36,6 +36,7 @@ class LDBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameter
     val check_resp    = Output(new CheckRAWResp)
     val wb_resp       = Vec(numReadport,Valid(new ExuResp))
     val search_resp   = Vec(2,Vec(numReadport,Flipped(Valid(new LDQSearchResp))))//data
+    val replay        = Output(Vec(numReadport,new LSUReplay))
     val commit        = Input(new CommitMsg)
     val flush         = Input(Bool())
 }
@@ -56,9 +57,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         idx1(totalSz-1,0)>idx2(totalSz-1,0))
     }
 
-
-    val s0_valid = VecInit(io.read map{i=>
-        i.req.fire
+    val s0_replay=VecInit(io.read map{i=>
+        i.req.valid&&(!i.req.ready)
+    })
+    val s0_replayMsg = WireInit(VecInit.fill(numReadport)(0.U.asTypeOf(new LSUReplay)))
+    val dcache_replayMsg = WireInit(VecInit.fill(numReadport)(0.U.asTypeOf(new LSUReplay)))
+    val s0_valid = VecInit(io.req zip s0_replay map{case(i,l)=>
+        i.valid&&(!l)
     })
     // dontTouch(s0_valid)
     val s0_raddr = Wire(Vec(numReadport,UInt(XLEN.W)))
@@ -66,13 +71,17 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     // val s0_check_uop = Wire(new MicroOp)
     val s0_fail  = WireInit(false.B)
 
+
     // val s1_check_uop = Wire(new MicroOp)
     val s1_valid = RegNext(VecInit(s0_valid.map{i=>i&(!io.flush)}))
+    val s1_replay= RegNext(s0_replay)
+    
     val s1_raddr = RegNext(s0_raddr)
     val s1_uop   = RegNext(s0_uop)
     val s1_fail  = WireInit(false.B)
 
     // val s2_check_uop = Wire(new MicroOp)
+    val s2_replay= RegNext(s1_replay)//一方面是dcache的mshr满了，另一方面是本来在s0就replay了
     val s2_fail  = WireInit(false.B)
     val s2_valid = RegNext(VecInit(s1_valid.map{i=>i&(!io.flush)}))
     val s2_raddr = RegNext(s1_raddr)
@@ -87,7 +96,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
 
     val finalMsg  = Wire(Vec(numReadport,new ExuResp))
 	val splitData = Wire(Vec(numReadport,Vec(XLEN/8,UInt(8.W))))
-
+    
     ldq.io.commit := io.commit
     ldq.io.refillMsg := io.refillMsg
     // ldq.io.dis    := io.dis
@@ -95,11 +104,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     ldq.io.s1_kill := false.B
     ldq.io.s2_kill := false.B
     ldq.io.check_unorder := io.check_unorder
+    // dontTouch(ldq.io.search_resp)
     for(i <- 0 until numReadport){
         ldq.io.search_resp(i).bits  := bypassMsg(i)
         ldq.io.search_resp(i).valid := bypass_en(i) 
     }
-    
+    // dontTouch(bypassMsg)
+    // dontTouch(bypass_en)
     for(i <- 0 until coreWidth){
         io.dis.enq(i).ready     := ldq.io.dis.enq(i).ready&&(!io.flush)
         io.dis.enq_idx(i)       := ldq.io.dis.enq_idx(i)
@@ -110,10 +121,23 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
 ////////////////////////////to DCache///////////////////////////////
 
     for(i <- 0 until numReadport){
+        s0_replayMsg(i).replay := s0_replay(i)
+        s0_replayMsg(i).uop    := s0_uop(i)
+    }
+    for(i <- 0 until numReadport){
+        dcache_replayMsg(i).replay := io.read(i).resp.bits.replay&&io.read(i).resp.valid
+        dcache_replayMsg(i).uop    := s2_uop(i)
+    }
+    for(i <- 0 until numReadport){
+        io.replay(i).replay := Mux(s0_replay(i),s0_replayMsg(i).replay,dcache_replayMsg(i).replay)
+        io.replay(i).uop    := Mux(s0_replay(i),s0_replayMsg(i).uop,dcache_replayMsg(i).uop)
+    }
+    for(i <- 0 until numReadport){
         s0_raddr(i)                 := (io.req(i).bits.rs1_data.asSInt + io.req(i).bits.uop.imm_packed(19,8).asSInt).asUInt
         io.read(i).req.valid        := io.req(i).valid
         io.read(i).req.bits.addr    := OffsetAlign(s0_raddr(i))
     }
+    dontTouch(s0_raddr)
 ///////////////////////////to LDQ///////////////////////////////////
     for(i <- 0 until numReadport){
         ldq.io.pipe.s0_addr(i)      := OffsetAlign(s0_raddr(i))
@@ -129,12 +153,28 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         io.search_req.addr(i).bits  := s1_raddr(i)
         io.search_req.stq_idx(i)    := s1_uop(i).stq_idx
     }
+    dontTouch(io.search_req)
 //////////////////////////   stage2    ////////////////////////////// 
 ////////////////////////////recieve resp///////////////////////////// 
-
+    val bypass_splitData = Wire(Vec(numReadport,Vec(XLEN/8,UInt(8.W))))
+    //这里可能出现stq和sb同时为高，此时需要合并请求，并且stq的优先
+    dontTouch(stq_resp)
+    dontTouch(sb_resp)
     for(i <- 0 until numReadport){
-        bypassMsg(i) := Mux(stq_resp(i).valid,stq_resp(i).bits,
-                        Mux(sb_resp(i).valid,sb_resp(i).bits,0.U.asTypeOf((new LDQSearchResp))))
+        val stq_valid = stq_resp(i).valid
+        val stq_mask  = stq_resp(i).bits.mask
+        val stq_data  = stq_resp(i).bits.data
+        val sb_valid  = sb_resp(i).valid
+        val sb_mask   = sb_resp(i).bits.mask
+        val sb_data   = sb_resp(i).bits.data
+        
+        bypassMsg(i).uop := DontCare
+        bypassMsg(i).mask:= Mux(stq_valid&&sb_valid,stq_mask|sb_mask,
+                            Mux(stq_valid,stq_mask,sb_mask))
+        bypassMsg(i).data:= Cat(bypass_splitData(i).map(_.asUInt).reverse)
+        for(j<- 0 until XLEN/8){
+            bypass_splitData(i)(j) := Mux(stq_mask(j)===1.U,stq_data((j+1)*8-1,j*8),sb_data((j+1)*8-1,j*8)) 
+        }
         bypass_en(i) := stq_resp(i).valid||sb_resp(i).valid
         
     }
@@ -147,7 +187,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         val bypass_data = bypassMsg(i).data
         val dcache_data = s2_dcache_resp(i).data
         for(j<- 0 until XLEN/8){
-            splitData(i)(j) := Mux(bypass_mask(j)===1.U,bypass_data((i+1)*8-1,i*8),dcache_data((i+1)*8-1,i*8)) 
+            splitData(i)(j) := Mux(bypass_mask(j)===1.U,bypass_data((j+1)*8-1,j*8),dcache_data((j+1)*8-1,j*8)) 
         }
         val wb_offset = s2_raddr(i)(log2Ceil(XLEN/8)-1,0)
         val wb_data = Cat(splitData(i).map(_.asUInt).reverse)>>(8.U*wb_offset)

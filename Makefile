@@ -71,7 +71,7 @@ VERILATOR_FLAGS += +incdir+$(WORK_DIR)/vsrc
 # VSRCS = $(shell find $(abspath ./vsrc) -maxdepth 1 -name "*.sv" -or -name "*.v") 
 # $(shell find $(YSYXSOC)/perip -name "*.v") $(YSYXSOC)/build/ysyxSoCFull.v 
 # CSRCS = $(shell find $(abspath ./csrc) -name "*.c"  -or -name "*.cpp")
-
+VERILATOR_FLAGS += -j 8
 VERILATOR_INPUT = $(GenerateV) $(shell find $(abspath $(WORK_DIR)/src/test/verilator) -name "*.c"  -or -name "*.cpp")
 VERILATOR_INPUT +=  $(shell find $(abspath $(WORK_DIR)/src/test/unit_test) -name "*.v"  -or -name "*.sv")
 ################################################################
@@ -113,7 +113,7 @@ verilog:
 	@echo "---------------- GENERATE VERILOG ----------------"
 	
 	@mkdir -p $(VERILOG_FILE)
-	mill  -i  $(PRJ).runMain Elaborate  --target-dir $(VERILOG_FILE)
+	mill  -i  -j 16 $(PRJ).runMain Elaborate  --target-dir $(VERILOG_FILE)
 # @echo $(GenerateV) $(WORK_DIR)/vsrc
 # @if [ -n "$(GenerateV)" ]; then \
 # 	echo "Copying $(GenerateV) to $(WORK_DIR)/vsrc"; \
@@ -124,7 +124,8 @@ verilog:
 debug :
 	@echo "---------------- GENERATE VERILOG ----------------"
 	@mkdir -p $(VERILOG_FILE)
-	mill  -i -d $(PRJ).runMain Elaborate --target-dir $(VERILOG_FILE)
+	sh ./wave.sh
+	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 # @rm  -r $(VERILOG_FILE)
 test:
 	@echo "-------------------- UNIT TEST----------------"
@@ -135,13 +136,13 @@ sim: verilog
 	$(VERILATOR) $(VERILATOR_FLAGS) --top-module  $(TOP_NAME) \
 											$(VERILATOR_INPUT)
 	@echo "------------------ BUILD -------------------"
-	$(MAKE) -j -C obj_dir -f ../Makefile_obj NAME=$(NAME)	
+	$(MAKE) -j 16  -C obj_dir -f ../Makefile_obj NAME=$(NAME)	
 
 run:sim 
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
-	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/obj_dir/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
+	
 
 
 ###############################VCS############################

@@ -15,7 +15,7 @@ default: $(NAME)
 
 # Include the rules made by Verilator
 include $(NAME).mk
-include $(NVBOARD_HOME)/scripts/nvboard.mk
+# include $(NVBOARD_HOME)/scripts/nvboard.mk
 # Use OBJCACHE (ccache) if using gmake and its installed
 COMPILE.cc = $(OBJCACHE) $(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c
 FILELIST_MK = $(shell find -L ../src/test/verilator -name "filelist.mk")
@@ -32,7 +32,7 @@ CPPFLAGS += -MMD -MP
 CPPFLAGS += $(INCLUDES) 
 CPPFLAGS += -DVL_DEBUG=1
 
-LDLIBS +=-lreadline -lSDL2 -lSDL2_image -lSDL2_ttf
+LDLIBS +=-lreadline -ldl
 LOADLIBES += $(NVBOARD_ARCHIVE)
 # Turn on some more compiler lint flags (when configured appropriately)
 # For testing inside Verilator, "configure --enable-ccwarn" will do this

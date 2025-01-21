@@ -11,6 +11,10 @@ class LSUReq(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val rs1_data     = UInt(XLEN.W)
     val rs2_data     = UInt(XLEN.W)
 }
+class LSUReplay(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
+    val uop          = new MicroOp
+    val replay       = Bool()
+}
 /* 
 目前没完成的功能：
 1.重新发送请求
@@ -25,9 +29,10 @@ class LSUBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
     
     val ld_req           = Vec(numReadport,Flipped(Valid(new LSUReq)))//read issue
     val ld_wb_resp       = Vec(numReadport,Valid(new ExuResp))
-
+    val ld_replay        = Output(Vec(numReadport,new LSUReplay))
     val st_req           = Flipped(Valid(new LSUReq))
     val st_wb_resp       = Valid(new ExuResp)
+    val st_replay        = Output(new LSUReplay)
     //resp for check 
     val check_resp    = Output(new CheckRAWResp)
 
@@ -73,7 +78,11 @@ with HasDCacheParameters with GRVOpConstants{
     ld_pipeline.io.check_unorder := st_pipeline.io.check_unorder
     ld_pipeline.io.search_resp   := st_pipeline.io.search_resp
     st_pipeline.io.search_req    := ld_pipeline.io.search_req
-
+    dontTouch(st_pipeline.io.search_req)
+    dontTouch(ld_pipeline.io.search_resp)
 
     io.check_resp := ld_pipeline.io.check_resp
+
+    io.st_replay<>st_pipeline.io.replay
+    io.ld_replay<>ld_pipeline.io.replay
 }
