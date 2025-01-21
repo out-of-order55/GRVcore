@@ -69,7 +69,7 @@ void BR_init(){
 void UT_Init(){
     Log("UT init....");
     uint32_t *start = (uint32_t *)sram;
-    BR_init();
+    // BR_init();
     for(int i=0;i<0x8000/4;i++){
         *start = i;
         start++;

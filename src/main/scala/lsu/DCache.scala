@@ -15,7 +15,7 @@ case class DCacheParams(
     nSets: Int = 16,
     nWays: Int = 2,
     rowBits: Int = 128,
-    numMSHRs:Int = 2,
+    numMSHRs:Int = 4,
     // nTLBSets: Int = 1,
     // nTLBWays: Int = 32,
     // nTLBBasePageSectors: Int = 4,
@@ -27,8 +27,6 @@ case class DCacheParams(
     prefetch: Boolean = false,
     blockBytes: Int = 16,
     fetchBytes: Int = 4,
-
-    
     ) {
 	
 }

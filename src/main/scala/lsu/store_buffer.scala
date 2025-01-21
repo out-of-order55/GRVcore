@@ -177,7 +177,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
 
 //////////////////////////forward         logic/////////////////////////////
     val forward_valid = io.search_req.addr.map(_.valid)
-    val forward_addr  = io.search_req.addr.map(_.bits)
+    val forward_addr  = io.search_req.addr.map{i=>BankAlign((i.bits))}
     val forward_bank  = io.search_req.addr.map(_.bits(offsetWidth-1,0)>>2)
     for(i <- 0 until numReadport){
         //可能遇到一个在flight 另一个在wait_sameblock

@@ -171,6 +171,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val s0_waddr    = io.pipe.s0_addr
     val s0_valid    = io.pipe.s0_uop.map(_.valid)
     val s0_idx      = io.pipe.s0_uop.map(_.bits.ldq_idx)
+    dontTouch(VecInit(s0_idx))
+    dontTouch(s0_waddr)
     for(i <- 0 until numReadport){
         when(s0_valid(i)){
             ldq(s0_idx(i)).uop := io.pipe.s0_uop(i).bits

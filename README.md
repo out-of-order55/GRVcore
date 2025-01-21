@@ -52,6 +52,8 @@ GRVCore
 
 2024/12/28：完成了exu，发现rocketchip的乘法器面积约为14000，div约为7000
 
+2024/1/21：之前好长时间没做，目前完成了lsu，通过了简易的测试，所有模块大致编写并测试完成，接下来开始组装
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

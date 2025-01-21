@@ -20,9 +20,9 @@ import freechips.rocketchip.util._
 4.bank conflict：完成
 
 对于整体的测试：
-1.测试forward
+1.测试forward:forward同样是简单的测试，之后整合会引入复杂测试
 2.测试check unorder：
-先发送一个ld，再发送一个st，其中ld的rob大于st
+先发送一个ld，再发送一个st，其中ld的rob大于st：简易的可以通过，复杂的需要到最后阶段
  */
 // class LSUTest (implicit p:Parameters)extends LazyModule with HasDCacheParameters{
 //     val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x0, 0x2000)))
@@ -191,10 +191,10 @@ class LSUTotalTest (implicit p:Parameters)extends LazyModule with HasDCacheParam
         val ld_req=RegInit(VecInit.fill(numReadport)(0.U.asTypeOf(Valid(new LSUReq))) )
         val st_req=RegInit((0.U.asTypeOf(Valid(new LSUReq))) )
         val addr_cnt = RegInit(0.U(2.W))
-        when(state_n===s_st_idle){
-            st_op := true.B
-        }.elsewhen(state===s_commit&&state_n===s_idle){
-            st_op := false.B
+        val st_cnt = RegInit(0.U(3.W))
+
+        when(state===s_commit){
+            st_cnt := st_cnt+1.U
         }
         // dontTouch(enq)
         for(i <- 0 until coreWidth){
@@ -207,31 +207,23 @@ class LSUTotalTest (implicit p:Parameters)extends LazyModule with HasDCacheParam
 
             commitMsg(i).valid :=false.B
             when(init_cnt===3.U){
-                enq(i).bits.rob_idx := 2.U
-                enq(i).bits.mem_cmd := M_XRD
+                enq(i).bits.rob_idx := i.U
+                enq(i).bits.mem_cmd := Mux(i.U===0.U,Mux(st_cnt(2)===1.U,M_XRD,M_XWR),M_CLEAN)
                 enq(i).bits.mem_signed:=false.B
                 enq(i).bits.mem_size := 2.U
                 enq(i).valid := true.B
             }
-            when(st_init_cnt===3.U){
-                enq(i).bits.rob_idx := 1.U
-                enq(i).bits.mem_cmd := M_XWR
-                enq(i).bits.mem_signed:=false.B
-                enq(i).bits.mem_size := 2.U
-                enq(i).valid := true.B
-            }
-            when(state===s_dis&&st_op){
-                enq(i).bits.stq_idx := Mux(enq_idxs(i).valid,enq_idxs(i).bits,enq(i).bits.stq_idx)
-            }
+
+
             when(state===s_dis){
-            
-                enq(i).bits.ldq_idx := Mux(st_enq_idxs(i).valid,st_enq_idxs(i).bits,enq(i).bits.ldq_idx)
+                enq(i).bits.ldq_idx := Mux(enq_idxs(i).valid,enq_idxs(i).bits,enq(i).bits.ldq_idx)
+                enq(i).bits.stq_idx := Mux(st_enq_idxs(i).valid,st_enq_idxs(i).bits,enq(i).bits.stq_idx)
             }
             when(state_n===s_commit&&state===s_wb){
                 commitMsg(i).valid := i.U===0.U&&true.B
                 commitMsg(i).bits  := RegNext(lsu.io.ld_wb_resp(i).bits.uop)
             }
-            when(state_n===s_commit&&state===s_wb&&st_op){
+            when(state_n===s_commit&&state===s_wb){
                 commitMsg(i).valid := i.U===0.U&&true.B
                 commitMsg(i).bits  := RegNext(lsu.io.st_wb_resp.bits.uop)
             }
@@ -240,24 +232,23 @@ class LSUTotalTest (implicit p:Parameters)extends LazyModule with HasDCacheParam
         }
         dis_cnt := Mux(state===s_dis,dis_cnt+1.U,dis_cnt)
         init_cnt := Mux(state===s_idle&&(!reset.asBool),init_cnt+1.U,init_cnt)
-        st_init_cnt := Mux(state===s_st_idle&&(!reset.asBool),st_init_cnt+1.U,st_init_cnt)
+
         for(i <- 0 until numReadport){
             ld_req(i).valid := false.B
             when(state===s_dis&&state_n===s_req){
-                ld_req(i).bits.uop := enq(i).bits
+                ld_req(i).bits.uop := enq(0).bits
                 ld_req(i).bits.rs1_data:= 4.U
                 ld_req(i).bits.rs2_data:= "h12345678".U
-                ld_req(i).valid := true.B
+                ld_req(i).valid := (i.U===0.U)&&(enq(0).bits.mem_cmd===M_XRD)
                 addr_cnt := addr_cnt +1.U
             }
         }
         st_req.valid := false.B
-        when(state===s_dis&&state_n===s_req&&st_op){
+        when(state===s_dis&&state_n===s_req){
             st_req.bits.uop := enq(0).bits
             st_req.bits.rs1_data:= 4.U
             st_req.bits.rs2_data:= "h12345678".U
-            st_req.valid    := true.B
-
+            st_req.valid    := (enq(0).bits.mem_cmd===M_XWR)
         }
         lsu.io.ld_req := ld_req
         lsu.io.st_req := st_req
@@ -284,12 +275,7 @@ class LSUTotalTest (implicit p:Parameters)extends LazyModule with HasDCacheParam
                 state_n := s_commit
             }
             is(s_commit){
-                state_n := Mux(st_op,s_st_idle,s_idle)
-            }
-            is(s_st_idle){
-                when(st_init_cnt===3.U){
-                    state_n := s_dis
-                }
+                state_n := s_idle
             }
         }
 
