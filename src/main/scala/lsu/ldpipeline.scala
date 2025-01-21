@@ -60,7 +60,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val s0_valid = VecInit(io.read map{i=>
         i.req.fire
     })
-    dontTouch(s0_valid)
+    // dontTouch(s0_valid)
     val s0_raddr = Wire(Vec(numReadport,UInt(XLEN.W)))
     val s0_uop   = WireInit(VecInit(io.req.map(_.bits.uop)))
     // val s0_check_uop = Wire(new MicroOp)

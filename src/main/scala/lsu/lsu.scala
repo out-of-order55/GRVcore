@@ -11,7 +11,10 @@ class LSUReq(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val rs1_data     = UInt(XLEN.W)
     val rs2_data     = UInt(XLEN.W)
 }
-
+/* 
+目前没完成的功能：
+1.重新发送请求
+ */
 class DisIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val enq     = Vec(coreWidth,Flipped(Decoupled(new MicroOp)))//dispatch
     val enq_idx = (Vec(coreWidth,Valid(UInt(log2Ceil(numLDQs).W))))//dispatch

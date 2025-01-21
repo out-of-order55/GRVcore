@@ -11,7 +11,7 @@ import freechips.rocketchip.util._
 
 class SimTop (implicit p:Parameters)extends Module{
   
-  val m = LazyModule(new LSUTest)
+  val m = LazyModule(new LSUTotalTest)
   // // val m =Module(new DispatcherTest())
   // m.dontTouchPorts()
   val n= Module(m.module)

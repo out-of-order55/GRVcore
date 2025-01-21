@@ -12,7 +12,7 @@ case object DCacheKey extends Field[DCacheParams]
 
 
 case class DCacheParams(
-    nSets: Int = 256,
+    nSets: Int = 16,
     nWays: Int = 2,
     rowBits: Int = 128,
     numMSHRs:Int = 2,
