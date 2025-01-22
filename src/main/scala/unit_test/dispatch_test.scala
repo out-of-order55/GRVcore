@@ -18,7 +18,7 @@ class DecGen(implicit p: Parameters)extends GRVModule{
     sel := sel+1.U
     io.dec_uops := DontCare
     for(i <- 0 until coreWidth){
-        io.dec_uops(i).bits.iq_type := Mux(i.U===0.U,IQT_INT,IQT_MEM)
+        io.dec_uops(i).bits.iq_type := Mux(i.U===0.U,IQT_INT,IQT_LD)
         io.dec_uops(i).bits.ftq_idx := sel
         io.dec_uops(i).valid        := true.B
     }

@@ -23,7 +23,8 @@ case class CoreParams(
     numSBs  :Int = 4,
     mulDiv: Option[freechips.rocketchip.rocket.MulDivParams] = Some(MulDivParams(divEarlyOut=true)),
     issueParams :Seq[IssueParams] =  Seq(                
-        IssueParams(issueWidth=2, numEntries=8, iqType=IQT_MEM.litValue, dispatchWidth=2),
+        IssueParams(issueWidth=2, numEntries=8, iqType=IQT_LD.litValue, dispatchWidth=2),
+        IssueParams(issueWidth=1, numEntries=8, iqType=IQT_ST.litValue, dispatchWidth=2),
         IssueParams(issueWidth=2, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=2)),
     iqueueParams:IQueueParams = new IQueueParams,
     ftqParams:FtqParams = new FtqParams,
@@ -65,7 +66,8 @@ trait HasGRVParameters {
     val numSBs	 	 = CoreParams.numSBs
     val mulDivParams= CoreParams.mulDiv.getOrElse(MulDivParams())
     val intIssueParam = issueParams.find(_.iqType == IQT_INT.litValue).get
-    val memIssueParam = issueParams.find(_.iqType == IQT_MEM.litValue).get
+    val ldIssueParam = issueParams.find(_.iqType == IQT_LD.litValue).get
+    val stIssueParam = issueParams.find(_.iqType == IQT_ST.litValue).get
     val bimParams:Option[BIMParams]        = (CoreParams.BIMParams)
     val ubtbParams:Option[MicroBTBParams]  = CoreParams.UBTBParams
     val btbParams = CoreParams.btbParams.getOrElse(BTBParams())

@@ -81,6 +81,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
         //commit 阶段
         val deq = Flipped(Valid(UInt(log2Ceil(ftqentries).W)))
 
+        // val commit = Input(new CommitMsg)
         //分支指令执行阶段
         val get_ftq_pc = new GetPCFromFtqIO()
         //分支预测重定向：commit阶段

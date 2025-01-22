@@ -44,7 +44,7 @@ trait HasDCacheParameters extends HasGRVParameters{
 	val offsetWidth = log2Ceil(blockBytes)
 	val tagWidth    = XLEN-indexWidth-offsetWidth
 	val bankWidth   = log2Ceil(blockBytes/bankNum)
-	val numReadport = 2
+	val numReadport = ldIssueParam.issueWidth
 	
 	def AddressSplitter(addr:UInt)(implicit p:Parameters)={
 		val res = Wire(new CacheMsg())

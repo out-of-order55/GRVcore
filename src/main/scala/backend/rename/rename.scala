@@ -8,11 +8,11 @@ import org.chipsalliance.cde.config._
 
 import grvcore.common._
 
-class CommitResp(implicit p: Parameters) extends GRVBundle{
-    val commit               = Bool()
-    val rat_write_dst        = Vec(coreWidth,Valid(new ReMapReq))
-    val freelist_write_dst   = Vec(coreWidth, Valid(UInt(pregSz.W)))
-}
+// class CommitResp(implicit p: Parameters) extends GRVBundle{
+//     val commit               = Bool()
+//     val rat_write_dst        = Vec(coreWidth,Valid(new ReMapReq))
+//     val freelist_write_dst   = Vec(coreWidth, Valid(UInt(pregSz.W)))
+// }
 /* 
 decode 送来的指令一定为2条有效指令，所以如果freelist分配不了两个寄存器，说明list空了，得暂停了
  */
@@ -21,14 +21,15 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
         val dec_uops     = Flipped(Decoupled(Vec(coreWidth,new MicroOp)))
         val dis_uops     = (Decoupled(Vec(coreWidth,new MicroOp)))
         val redirect     = Input(Bool())
-        val commit       = Input(new CommitResp)
+        val commit       = Input(new CommitMsg)
     })
     val dec_ready = Wire(Bool())
     val dec_fire  = Wire(Bool())
     // val dis_valid = Wire(Bool())
     val rat       = Module(new RAT)
     val freelist  = Module(new FreeList)
-    val commit    = WireInit(io.commit.commit)
+    val rat_write_dst        = WireInit(VecInit.fill(coreWidth)(0.U.asTypeOf(Valid(new ReMapReq))))
+    val freelist_write_dst   = WireInit(VecInit.fill(coreWidth)(0.U.asTypeOf(Valid(UInt(pregSz.W)))))
     val ratResps  = WireInit(rat.io.resps)
     val freelistResp = WireInit(freelist.io.alloc_pregs)
     val uops      = Wire(Vec(coreWidth,new MicroOp))
@@ -70,8 +71,16 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
         
     }
     //commit
-    rat.io.commitReqs := io.commit.rat_write_dst
-    freelist.io.dealloc_pregs := io.commit.freelist_write_dst
+    
+    for(i<- 0 until coreWidth){
+        rat_write_dst(i).valid := io.commit.valid(i)
+        rat_write_dst(i).bits.ldst:= io.commit.commit_uops(i).ldst
+        rat_write_dst(i).bits.pdst:= io.commit.commit_uops(i).pdst
+        freelist_write_dst(i).valid := io.commit.valid(i)
+        freelist_write_dst(i).bits  := io.commit.commit_uops(i).pdst
+    }
+    rat.io.commitReqs := rat_write_dst
+    freelist.io.dealloc_pregs := freelist_write_dst
     //redirect
     rat.io.redirect := io.redirect
     freelist.io.redirect := io.redirect
