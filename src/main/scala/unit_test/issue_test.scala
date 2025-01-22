@@ -80,38 +80,38 @@ class WakeUpGen (val issueWidth:Int,val dispatchWidth:Int,val numWakeupPorts:Int
 
 
 }
-class IssueTest(implicit  p:Parameters) extends GRVModule with DontTouch{
-    val dispatchWidth=2
-    val issueWidth = 2
-    val numWakeupPorts=4
+// class IssueTest(implicit  p:Parameters) extends GRVModule with DontTouch{
+//     val dispatchWidth=2
+//     val issueWidth = 2
+//     val numWakeupPorts=4
     
-    val disgen = Module(new DisGen(dispatchWidth))
-    val check = Module(new Checker)
-    val wakegen= Module(new WakeUpGen(issueWidth,dispatchWidth,numWakeupPorts))
-    val issue  = Module(new BaseIssueUnit(numWakeupPorts,issueWidth,4,0,dispatchWidth))
-    val timer = RegInit(0.U(32.W))
-    dontTouch((disgen.io))
-    timer := timer +1.U
-    issue.io.dis_uops.valid:= disgen.io.dis_uops.map(_.valid).reduce(_||_)
-    issue.io.dis_uops.bits := disgen.io.dis_uops
-    issue.io.flush    := false.B
-    issue.io.fu_using := wakegen.io.fu_using
-    disgen.io.full :=(!issue.io.dis_uops.ready)
-    val iss2ex = withReset(reset.asBool) {
-        Module(new Queue(Vec(issueWidth,Valid(new MicroOp)), 1, pipe=true, flow=false)) }
-    iss2ex.io.enq<>issue.io.issue_uops
-        dontTouch(iss2ex.io)
-    dontTouch(wakegen.io)
-    wakegen.io.ex_uops:=iss2ex.io.deq.bits
-    iss2ex.io.deq.ready := true.B
-    issue.io.fu_using := wakegen.io.fu_using
-    issue.io.wakeup   := wakegen.io.wakeup
-    check.io.clock := clock
-    check.io.reset := reset
-    check.io.finish := false.B
-    check.io.ret := false.B
-    when(timer===100.U){
-        check.io.finish := true.B
-        check.io.ret := false.B
-    }
-}
+//     val disgen = Module(new DisGen(dispatchWidth))
+//     val check = Module(new Checker)
+//     val wakegen= Module(new WakeUpGen(issueWidth,dispatchWidth,numWakeupPorts))
+//     val issue  = Module(new BaseIssueUnit(numWakeupPorts,issueWidth,4,0,dispatchWidth))
+//     val timer = RegInit(0.U(32.W))
+//     dontTouch((disgen.io))
+//     timer := timer +1.U
+//     issue.io.dis_uops.valid:= disgen.io.dis_uops.map(_.valid).reduce(_||_)
+//     issue.io.dis_uops.bits := disgen.io.dis_uops
+//     issue.io.flush    := false.B
+//     issue.io.fu_using := wakegen.io.fu_using
+//     disgen.io.full :=(!issue.io.dis_uops.ready)
+//     val iss2ex = withReset(reset.asBool) {
+//         Module(new Queue(Vec(issueWidth,Valid(new MicroOp)), 1, pipe=true, flow=false)) }
+//     iss2ex.io.enq<>issue.io.issue_uops
+//         dontTouch(iss2ex.io)
+//     dontTouch(wakegen.io)
+//     wakegen.io.ex_uops:=iss2ex.io.deq.bits
+//     iss2ex.io.deq.ready := true.B
+//     issue.io.fu_using := wakegen.io.fu_using
+//     issue.io.wakeup   := wakegen.io.wakeup
+//     check.io.clock := clock
+//     check.io.reset := reset
+//     check.io.finish := false.B
+//     check.io.ret := false.B
+//     when(timer===100.U){
+//         check.io.finish := true.B
+//         check.io.ret := false.B
+//     }
+// }

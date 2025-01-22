@@ -15,8 +15,9 @@ object SimTable{
 	def createIQTable(): Seq[(UInt, String)] = {
         Seq(
             (IQT_INT, "IQT_INT"),
-            (IQT_MEM, "IQT_MEM"),
-            (IQT_FP , "IQT_FP"),
+            (IQT_LD, "IQT_LD"),
+            (IQT_ST, "IQT_ST"),
+            // (IQT_FP , "IQT_FP"),
             (IQT_MFP, "IQT_MFP")
         )
 	}

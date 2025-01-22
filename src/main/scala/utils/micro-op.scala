@@ -92,4 +92,5 @@ class CtrlSignals extends Bundle()
     val is_load     = Bool()   // will invoke TLB address lookup
     val is_sta      = Bool()   // will invoke TLB address lookup
     val is_std      = Bool()
+    // val rf_wen      = Bool()
 }

@@ -30,8 +30,8 @@ class CommitExcMsg(implicit p: Parameters) extends GRVBundle{
     val flush_typ  = UInt(FLUSH_SZ.W)
 }
 class robEnqueue (implicit p: Parameters) extends GRVBundle{
-    val uops  = Vec(coreWidth,new MicroOp)
-    val valid = Vec(coreWidth,Bool())
+    val uops  = Vec(coreWidth,Decoupled(new MicroOp))
+    // val valid = Vec(coreWidth,Bool())
 }
 class Exception(implicit p: Parameters) extends GRVBundle{
     val uops  = (new MicroOp)
@@ -39,8 +39,8 @@ class Exception(implicit p: Parameters) extends GRVBundle{
 }
 class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
 
-    val enq         = Flipped(Decoupled(new robEnqueue))
-    val enq_idxs    = Output(Vec(coreWidth,UInt(log2Ceil(ROBEntry).W)))
+    val enq         = Flipped(new robEnqueue)
+    val enq_idxs    = Output(Vec(coreWidth,Valid(UInt(log2Ceil(ROBEntry).W))))
     val wb_resp     = Flipped(Vec(numWakeupPorts, Valid(new ExuResp)))
 
     val lsuexc      = Input(new Exception)
@@ -77,7 +77,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val rob_deq_ptr = RegInit(0.U(log2Ceil(ROBEntry+1).W))
     val full = Wire(Bool())
     
-    val do_enq = Wire(Bool())
+    val do_enq = WireInit(VecInit(io.enq.uops.map{i=>i.fire&&(!rob_state===s_redirect)}))
     // val do_deq = Wire(Bool())
 
     
@@ -110,7 +110,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val flush       = WireInit(br_info.cfi_mispredicted)
     val is_exc_inst_commit = WireInit(false.B)
     val br_update   = RegInit(0.U.asTypeOf(new BrUpdateInfo))
-    do_enq := io.enq.fire&&(!rob_state===s_redirect)
+
     val deq_vld_mask    = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=> i(rob_deq_val).valid}).asUInt))
     val deq_finish_mask = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish}).asUInt))
     /* 
@@ -127,7 +127,9 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     
     full := (rob_enq_val===rob_deq_val)&&(rob_enq_mask=/=rob_deq_mask)
     dontTouch(full)
-    io.enq.ready := (!full)&&(rob_state===s_normal)
+    io.enq.uops.foreach{i=>
+        i.ready := (!full)&&(rob_state===s_normal)
+        } 
     io.commit:= DontCare
     io.commit.valid := false.B
     io.enq_idxs:= DontCare
@@ -136,11 +138,12 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     for(i <- 0 until coreWidth){
 
         //enq
-        when(do_enq){
+        when(do_enq(i)){
             rob_entry(i)(rob_enq_val).finish := false.B
-            rob_entry(i)(rob_enq_val).valid := enqInfo.bits.valid(i)
-            rob_entry(i)(rob_enq_val).uop   := enqInfo.bits.uops(i)
-            io.enq_idxs(i) := rob_enq_val + i.U
+            rob_entry(i)(rob_enq_val).valid := enqInfo.uops(i).valid
+            rob_entry(i)(rob_enq_val).uop   := enqInfo.uops(i).bits
+            io.enq_idxs(i).bits := rob_enq_val + i.U
+            io.enq_idxs(i).valid:= true.B
         }
         
         //deq
@@ -171,7 +174,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     }
 
     //指针更新逻辑
-    when(do_enq){
+    when(do_enq.reduce(_||_)){
         rob_enq_ptr := rob_enq_ptr + 1.U
     }
     when(can_commit){

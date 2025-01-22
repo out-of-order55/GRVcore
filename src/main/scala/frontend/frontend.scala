@@ -49,7 +49,7 @@ class FrontendIO(implicit p: Parameters) extends GRVBundle with HasFrontendParam
     val redirect_pc       = Output(UInt(XLEN.W))
 
     //commit 信号
-    val commit            = Output(Bool())
+    val commit            = Output(new CommitMsg)
 
     val flush_icache = Output(Bool())
 }
@@ -248,7 +248,7 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     ftq.io.bpdupdate <> bp.io.update
     ftq.io.brupdate  <> io.cpu.brupdate
     ftq.io.get_ftq_pc<> io.cpu.get_pc
-    ftq.io.deq.valid := io.cpu.commit
+    ftq.io.deq.valid := io.cpu.commit.valid.reduce(_||_)
     ftq.io.deq.bits  := DontCare
     val cpu_flush       = io.cpu.redirect_flush
     val cpu_redirect    = io.cpu.redirect_val  

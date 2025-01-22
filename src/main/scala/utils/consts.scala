@@ -81,8 +81,8 @@ trait GRVOpConstants
 
     val IQT_SZ  = 3
     val IQT_INT = 1.U(IQT_SZ.W)
-    val IQT_MEM = 2.U(IQT_SZ.W)
-    val IQT_FP  = 4.U(IQT_SZ.W)
+    val IQT_LD  = 2.U(IQT_SZ.W)
+    val IQT_ST  = 4.U(IQT_SZ.W)
     val IQT_MFP = 6.U(IQT_SZ.W)
     val PC_PLUS4 = 0.U(2.W)  // PC + 4
     val PC_BRJMP = 1.U(2.W)  // brjmp_target

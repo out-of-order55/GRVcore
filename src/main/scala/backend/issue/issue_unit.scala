@@ -53,10 +53,10 @@ val issueWidth:Int,
 val numEntries:Int,
 val numWakeupPorts: Int,
 val dispatchWidth:Int)(implicit p: Parameters)extends GRVBundle{
-    val dis_uops    = Flipped(Decoupled(Vec(dispatchWidth,Valid(new MicroOp))))
-    val issue_uops  = Decoupled(Vec(issueWidth,Valid(new MicroOp)))
+    val dis_uops    = Flipped((Vec(dispatchWidth,Decoupled(new MicroOp))))
+    val issue_uops  = (Vec(issueWidth,Decoupled(new MicroOp)))
 
-    val fu_using    = Input(Vec(issueWidth,Valid(UInt(FUC_SZ.W))))//for unpipeline:DIV 
+    val fu_using    = Input(Vec(issueWidth,UInt(FUC_SZ.W)))//for unpipeline:DIV 
     
     val wakeup      = Input(Vec(numWakeupPorts,new WakeupPort()))
     val flush       = Input(Bool())
@@ -161,7 +161,9 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
     val full            = WireInit(false.B)
     val num_free        = PopCount(entrys.map(_.io.can_allocate))
     full := num_free<dispatchWidth.U
-    io.dis_uops.ready := (!full)&(!io.flush)
+    io.dis_uops.foreach{i=>
+        i.ready := (!full)&(!io.flush)
+    }
     val in_sels = SelectFirstN(entry_can_alloc.asUInt,dispatchWidth)
     val iss_sels= SelectFirstN(entry_can_iss.asUInt,issueWidth)
     // io.dis_uops
@@ -171,9 +173,9 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
     //in data
     (entrys.zipWithIndex).foreach{case(entry,idx)=>
         val issue_wenOH = (0 until dispatchWidth).map{i=>
-            io.dis_uops.bits(i).valid&&idx.U===OHToUInt(in_sels(i))
+            io.dis_uops(i).valid&&idx.U===OHToUInt(in_sels(i))
         }
-        val in_Data = Mux1H(issue_wenOH,io.dis_uops.bits.map(_.bits))
+        val in_Data = Mux1H(issue_wenOH,io.dis_uops.map(_.bits))
         
         entry.io.dis_uop.valid := issue_wenOH.reduce(_||_) 
         entry.io.dis_uop.bits  := in_Data
@@ -185,8 +187,8 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
      */
     //init
     for(i <- 0 until issueWidth){
-        io.issue_uops.bits(i).valid := false.B
-        io.issue_uops.bits(i).bits  := DontCare
+        io.issue_uops(i).valid := false.B
+        io.issue_uops(i).bits := DontCare
     }
     for(i <- 0 until numEntries){
         entrys(i).io.grant := false.B
@@ -212,15 +214,15 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
             ))
             dontTouch(entry_bsy)
             //多个port不会选择同一个entry
-            val can_iss   = (!io.fu_using(i).valid)&&((io.fu_using(i).bits&entrys(j).io.ex_uop.bits.fu_code)=/=0.U)&&
+            val can_iss   = ((io.fu_using(i)&entrys(j).io.ex_uop.bits.fu_code)=/=0.U)&&
                         (entry_can_iss(j))&(!iss_bsy(j))&(!entry_bsy)
             dontTouch(can_iss)
             when(can_iss){
                 // entry_can_iss(j) := false.B
                 has_iss(i)(j)      := true.B
-                entrys(j).io.grant := io.issue_uops.ready
-                io.issue_uops.bits(i).valid := true.B
-                io.issue_uops.bits(i).bits  := entrys(j).io.ex_uop.bits
+                entrys(j).io.grant := io.issue_uops(i).ready
+                io.issue_uops(i).valid := true.B
+                io.issue_uops(i).bits  := entrys(j).io.ex_uop.bits
             }
             
             iss_bsy(j+1)  := can_iss || iss_bsy(j)
@@ -228,7 +230,7 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
         
 
     }
-    io.issue_uops.valid := io.issue_uops.bits.map(_.valid).reduce(_||_)
+    // io.issue_uops.valid := io.issue_uops.bits.map(_.valid).reduce(_||_)
     for(i <- 0 until numEntries){
         //wakeup
         entrys(i).io.wakeup := io.wakeup

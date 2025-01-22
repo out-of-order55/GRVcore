@@ -45,15 +45,15 @@ object XDecode extends DecodeConstants
 {
 
     val table: Array[(BitPat, List[BitPat])] = Array(
-    LW      -> List(Y, uopLD   , IQT_MEM, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
-    LH      -> List(Y, uopLD   , IQT_MEM, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
-    LHU     -> List(Y, uopLD   , IQT_MEM, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
-    LB      -> List(Y, uopLD   , IQT_MEM, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
-    LBU     -> List(Y, uopLD   , IQT_MEM, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
+    LW      -> List(Y, uopLD   , IQT_LD, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
+    LH      -> List(Y, uopLD   , IQT_LD, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
+    LHU     -> List(Y, uopLD   , IQT_LD, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
+    LB      -> List(Y, uopLD   , IQT_LD, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
+    LBU     -> List(Y, uopLD   , IQT_LD, FU_MEM , RT_FIX, RT_FIX, RT_X  , IS_I, Y, N,N, N, N, M_XRD, 3.U, N, N, N, N, N, CSR.N),
 
-    SW      -> List(Y, uopSTA  , IQT_MEM, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_S, N, Y,N, N, N, M_XWR, 0.U, N, N, N, N, N, CSR.N),
-    SH      -> List(Y, uopSTA  , IQT_MEM, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_S, N, Y,N, N, N, M_XWR, 0.U, N, N, N, N, N, CSR.N),
-    SB      -> List(Y, uopSTA  , IQT_MEM, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_S, N, Y,N, N, N, M_XWR, 0.U, N, N, N, N, N, CSR.N),
+    SW      -> List(Y, uopSTA  , IQT_ST, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_S, N, Y,N, N, N, M_XWR, 0.U, N, N, N, N, N, CSR.N),
+    SH      -> List(Y, uopSTA  , IQT_ST, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_S, N, Y,N, N, N, M_XWR, 0.U, N, N, N, N, N, CSR.N),
+    SB      -> List(Y, uopSTA  , IQT_ST, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_S, N, Y,N, N, N, M_XWR, 0.U, N, N, N, N, N, CSR.N),
 
     LUI     -> List(Y, uopLUI  , IQT_INT, FU_ALU , RT_FIX, RT_X  , RT_X  , IS_U, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
 
@@ -104,7 +104,7 @@ object XDecode extends DecodeConstants
     CSRRSI  -> List(Y, uopCSRRSI,IQT_INT, FU_CSR , RT_FIX, RT_PAS, RT_X  , IS_I, N, N,N, N, N, M_X  , 0.U, N, N, N, Y, Y, CSR.S),
     CSRRCI  -> List(Y, uopCSRRCI,IQT_INT, FU_CSR , RT_FIX, RT_PAS, RT_X  , IS_I, N, N,N, N, N, M_X  , 0.U, N, N, N, Y, Y, CSR.C),
 
-    SFENCE_VMA->List(Y,uopSFENCE,IQT_MEM, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_X, N, N,N, N, N,M_SFENCE,0.U,N, N, N, Y, Y, CSR.N),
+    // SFENCE_VMA->List(Y,uopSFENCE,IQT_LD, FU_MEM , RT_X  , RT_FIX, RT_FIX, IS_X, N, N,N, N, N,M_SFENCE,0.U,N, N, N, Y, Y, CSR.N),
     ECALL   -> List(Y, uopERET  ,IQT_INT, FU_CSR , RT_X  , RT_X  , RT_X  , IS_I, N, N,N, N, N, M_X  , 0.U, N, N, Y, Y, Y, CSR.I),
     EBREAK  -> List(Y, uopERET  ,IQT_INT, FU_CSR , RT_X  , RT_X  , RT_X  , IS_I, N, N,N, N, N, M_X  , 0.U, N, N, Y, Y, Y, CSR.I),
     SRET    -> List(Y, uopERET  ,IQT_INT, FU_CSR , RT_X  , RT_X  , RT_X  , IS_I, N, N,N, N, N, M_X  , 0.U, N, N, N, Y, Y, CSR.I),
