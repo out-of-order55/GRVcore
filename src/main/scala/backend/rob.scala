@@ -43,7 +43,7 @@ class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
     val enq_idxs    = Output(Vec(coreWidth,Valid(UInt(log2Ceil(ROBEntry).W))))
     val wb_resp     = Flipped(Vec(numWakeupPorts, Valid(new ExuResp)))
 
-    val lsuexc      = Input(new Exception)
+    val lsuexc      = Flipped(Valid(new Exception))
     val br_info     = Input(new BrUpdateInfo)
 
 

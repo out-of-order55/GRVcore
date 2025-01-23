@@ -50,8 +50,8 @@ class ComplexDispatcher(implicit p: Parameters) extends GRVModule{
         val iq_type = ren.map{u=>(u.bits.iq_type & issueParam.iqType.U).orR}
 
         //
-        for(j<-0 until coreWidth){
-            ren(j).valid:=io.ren_uops(j).valid&iq_type(i)
+        for(j<- 0 until coreWidth){
+            ren(j).valid:=io.ren_uops(j).valid&iq_type(j)
         }
         //n入k出
         val compactor = Module(new Compactor(coreWidth,issueParam.dispatchWidth,new MicroOp))

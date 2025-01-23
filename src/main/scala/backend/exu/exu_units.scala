@@ -24,38 +24,20 @@ class ExuReq(implicit p: Parameters) extends GRVBundle{
     val rs1_data     = UInt(XLEN.W)
     val rs2_data     = UInt(XLEN.W)
 }
-abstract class ExecutionUnit(
-    val isAluUnit:Boolean = false,
-    val isJmpUnit:Boolean = false,
-    val isMulUnit:Boolean = false,
-    val isDivUnit:Boolean = false
-)(implicit p: Parameters) extends GRVModule
-{
-    val numIrfReadPorts = (if (isAluUnit) 1 else 0) + (if (isJmpUnit) 1 else 0) + (if (isMulUnit) 1 else 0) + (if (isDivUnit) 1 else 0)
-    val numIrfWritePorts = (if (isAluUnit) 1 else 0)  + (if (isMulUnit) 1 else 0) + (if (isDivUnit) 1 else 0)
-    val io = IO(new Bundle {
-        val fu_types = Output(Bits(FUC_SZ.W))
-
-        val req      = Flipped(new DecoupledIO(new ExuReq()))
-
-        val iresp    = Vec(numIrfWritePorts,(new DecoupledIO(new ExuResp())))
-
-        val get_ftq_pc = if (isJmpUnit) Flipped(new GetPCFromFtqIO()) else null
-        val brupdate = if (isJmpUnit) Output(Valid(new BrUpdateInfo)) else null
-    })
-
-    io.req.ready := false.B
-
-    for(i <- 0 until numIrfWritePorts){
-        io.iresp(i).valid := false.B
-        io.iresp(i).bits := DontCare
-        if(!isJmpUnit){
-        assert(io.iresp(i).ready)
-        }
-    }
+// abstract class ExecutionUnit(
+//     val isAluUnit:Boolean = true,
+//     val isJmpUnit:Boolean = false,
+//     val isMulUnit:Boolean = false,
+//     val isDivUnit:Boolean = false
+// )(implicit p: Parameters) extends GRVModule
+// {
+//     val numIrfReadPorts = (if (isAluUnit) 1 else 0) + (if (isJmpUnit) 1 else 0) + (if (isMulUnit) 1 else 0) + (if (isDivUnit) 1 else 0)
+//     val numIrfWritePorts = (if (isAluUnit) 1 else 0)  + (if (isMulUnit) 1 else 0) + (if (isDivUnit) 1 else 0)
+//     println(f"numport:$numIrfWritePorts ")
 
 
-}
+
+// }
 /* 
 目前为简便处理，只允许ALU+JMP
 MUL+DIV
@@ -65,12 +47,36 @@ class ALUExuUnit(
     hasJMP:Boolean=false,
     hasMUL:Boolean=false,
     hasDIV:Boolean=false,
-)(implicit p: Parameters)extends ExecutionUnit(hasALU,hasJMP,hasMUL,hasDIV){
+)(implicit p: Parameters)extends GRVModule{
     val imulLatency = 3
     val iresp_fu_units = ArrayBuffer[FunctionalUnit]()
     def length = iresp_fu_units.length
-    override val numIrfReadPorts = (if (hasALU) 1 else 0) + (if (hasDIV) 1 else 0) + (if (hasMUL) 1 else 0) + (if (hasJMP) 1 else 0)
-    override val numIrfWritePorts = (if (hasALU) 1 else 0) + (if (hasDIV) 1 else 0) + (if (hasMUL) 1 else 0)
+    val numIrfReadPorts = Seq(hasALU,hasDIV,hasMUL,hasJMP).count(identity)
+        // (if (hasALU) 1 else 0) + (if (hasDIV) 1 else 0) + (if (hasMUL) 1 else 0) + (if (hasJMP) 1 else 0)
+    val numIrfWritePorts = Seq(hasALU,hasDIV,hasMUL).count(identity)
+    
+
+    val io = IO(new Bundle {
+        val fu_types = Output(Bits(FUC_SZ.W))
+
+        val req      = Flipped(new DecoupledIO(new ExuReq()))
+
+        val iresp    = Vec(numIrfWritePorts,(new DecoupledIO(new ExuResp())))
+
+        val get_ftq_pc = if (hasJMP) Flipped(new GetPCFromFtqIO()) else null
+        val brupdate = if (hasJMP) Output(Valid(new BrUpdateInfo)) else null
+    })
+
+    io.req.ready := false.B
+
+    for(i <- 0 until numIrfWritePorts){
+        io.iresp(i).valid := false.B
+        io.iresp(i).bits := DontCare
+        if(!hasJMP){
+        assert(io.iresp(i).ready)
+        }
+    }
+
     val div_bsy = WireInit(false.B)
     io.fu_types := Mux(hasALU.B, FU_ALU, 0.U) |
                     Mux(hasMUL.B, FU_MUL, 0.U) |
@@ -149,17 +155,29 @@ class ALUExuUnit(
 
         iresp_fu_units += div
     }
-    // io.iresp.valid     := iresp_fu_units.map(_.io.resp.valid).reduce(_|_)
 
-    // io.iresp.bits      := iresp_fu_units.map(_.io.resp.bits)
     // io.iresp.bits.wb_data := PriorityMux(iresp_fu_units.map(f =>
     //     (f.io.resp.valid, f.io.resp.bits.wb_data)).toSeq)
-    for(i <- 0 until numIrfWritePorts){
-        if(hasJMP){
-            require((!hasDIV)&&(!hasMUL)&&(hasALU))
+    if(numIrfWritePorts==1){
+        io.iresp(0).valid := iresp_fu_units(0).io.resp.ready
+        io.iresp(0).bits  := iresp_fu_units(0).io.resp.bits
+    }else{
+        for(i <- 0 until numIrfWritePorts){
+            if(hasJMP){
+                require((!hasDIV)&&(!hasMUL)&&(hasALU))
+            }
+            require(numIrfWritePorts>=1)
+            
+            io.iresp(i).valid := iresp_fu_units(i).io.resp.ready
+            io.iresp(i).bits  := iresp_fu_units(i).io.resp.bits
         }
-        io.iresp(i).valid := iresp_fu_units(i).io.resp.ready
-        io.iresp(i).bits := iresp_fu_units(i).io.resp.bits
     }
-
+    def supportedFuncUnits = {
+        new SupportedFuncUnits(
+        alu = hasALU,
+        jmp = hasJMP,
+        mem = false,
+        muld = hasMUL || hasDIV
+        )
+    }
 }

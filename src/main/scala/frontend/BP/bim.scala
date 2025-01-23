@@ -12,7 +12,7 @@ class BIMMeta(implicit p: Parameters) extends GRVBundle with HasFrontendParamete
 }
 
 case class BIMParams(
-    nSets: Int = 512
+    nSets: Int = 32
     
 )
 //s2阶段出结果

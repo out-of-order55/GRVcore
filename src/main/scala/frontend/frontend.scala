@@ -271,5 +271,5 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     (GRVString("====Overall Frontend Params====") + "\n"
     + icache.toString+bp.toString)
     val str = toString()
-    print(str)
+    // print(str)
 }

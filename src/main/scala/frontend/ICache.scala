@@ -11,7 +11,7 @@ case object ICacheKey extends Field[ICacheParams]
 
 
 case class ICacheParams(
-    nSets: Int = 256,
+    nSets: Int = 16,
     nWays: Int = 2,
     rowBits: Int = 128,
     // nTLBSets: Int = 1,

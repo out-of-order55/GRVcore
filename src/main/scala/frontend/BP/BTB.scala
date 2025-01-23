@@ -7,7 +7,7 @@ import org.chipsalliance.cde.config._
 
 
 case class BTBParams(
-    nSets:  Int = 128,
+    nSets:  Int = 64,
     nWays:  Int = 2,
     offsetSz: Int = 21
 )
