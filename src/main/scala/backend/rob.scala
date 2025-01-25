@@ -13,7 +13,6 @@ ROB实现的功能：
 3.目前采用的是boom的提交方案，也就是只有一个corewidth所有的指令都执行完毕了，这时候才可以对指令进行提交，还有就是香山或者玄铁的方案，每个周期退休尽量多的指令
 这时候一种设计方法就是FTQ和指令记录mask数值，提交时对比值，只有mask全部为1 FTQ才可以退队，注意这里不包含无效指令，
 目前ROB会存储分支更新信息，在提交阶段送出
-
  */
 class CommitMsg(implicit p: Parameters) extends GRVBundle{
     val valid       = Vec(coreWidth,Bool())

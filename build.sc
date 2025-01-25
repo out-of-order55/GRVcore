@@ -2,14 +2,15 @@
 import mill._
 import scalalib._
 import scalafmt._
+// import $file.diff.build
 import $file.`rocket-chip`.dependencies.hardfloat.common
 import $file.`rocket-chip`.dependencies.cde.common
 import $file.`rocket-chip`.dependencies.diplomacy.common
 import $file.`rocket-chip`.common
-
-
+import $file.difftest.common
+import $packages._
 val chiselVersion = "6.6.0"
-val defaultScalaVersion = "2.13.15"
+val defaultScalaVersion = "2.13.14"
 val pwd = os.Path(sys.env("MILL_WORKSPACE_ROOT"))
 
 object v {
@@ -39,7 +40,7 @@ trait RocketChip extends $file.`rocket-chip`.common.RocketChipModule with HasThi
   def hardfloatModule = hardfloat
   def cdeModule = cde
   def diplomacyModule = diplomacy
-  def diplomacyIvy = None
+  // def diplomacyIvy = None
   def mainargsIvy = ivy"com.lihaoyi::mainargs:0.5.4"
   def json4sJacksonIvy = ivy"org.json4s::json4s-jackson:4.0.6"
 
@@ -75,24 +76,32 @@ trait RocketChip extends $file.`rocket-chip`.common.RocketChipModule with HasThi
     def sourcecodeIvy = ivy"com.lihaoyi::sourcecode:0.3.1"
   }
 }
+// object difftest extends $file.difftest.common.DiffTestModule {
+//   def crossValue: String = "chisel"
+//   // def scalaVersion: T[String] = T(defaultScalaVersion)
+//   override def millSourcePath = os.pwd / "difftest"
+  
+// }
+
+object difftest extends Cross[$file.difftest.common.CommonDiffTest]("chisel") {
+  override def millSourcePath = os.pwd / "difftest"
+}
 
 trait mymodule extends ScalaModule {
   def rocketModule: ScalaModule
+  def difftestModule: ScalaModule
   override def moduleDeps = super.moduleDeps ++ Seq(
-    rocketModule
+    rocketModule,difftestModule
   )
 }
-
-
-
-
-
 
 trait mycore extends mymodule with HasThisChisel  {
   override def millSourcePath = pwd
   def rocketModule = rocketchip
+  def difftestModule = difftest("chisel")
   override def sources = T.sources {
     super.sources() ++ Seq(PathRef(millSourcePath /"src"))
+    // ++Seq(PathRef(millSourcePath /"difftest"/"src"))
   }
 }
 object playground extends mycore with ScalafmtModule {

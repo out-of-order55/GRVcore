@@ -15,6 +15,11 @@ class RegFileWriteIO(implicit p: Parameters) extends GRVBundle{
     val wen  = Input(Bool())
     val data = Input(UInt(XLEN.W))
 }
+class RegFileDebugIO(implicit p: Parameters) extends GRVBundle{
+    val addr = Input(UInt(pregSz.W))
+    val ren  = Input(Bool())
+    val data = Output(UInt(XLEN.W))
+}
 /* 
 由于执行完直接写入寄存器，所以bypass网络就是从写入端到读出端
  */
@@ -27,6 +32,8 @@ val Bypass:Seq[Boolean]
     val io = IO(new Bundle{
         val readports  = Vec(numReadPorts,new RegFileReadIO)
         val writeports = Vec(numWritePorts,new RegFileWriteIO) 
+
+        val debugports = if(hasDebug)Vec(coreWidth,new RegFileDebugIO)else null
     })
     val regfile = Reg(Vec(maxPregSz,UInt(XLEN.W)))
     regfile(0):= 0.U
@@ -69,5 +76,9 @@ val Bypass:Seq[Boolean]
             "[regfile] too many writers a register")
         }
     }
-
+    if(hasDebug){
+        for(i <- 0 until coreWidth){
+            io.debugports(i).data := Mux(io.debugports(i).ren,regfile(io.debugports(i).addr),0.U)
+        }
+    }
 }

@@ -53,6 +53,9 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
         in_entry(i).bits.is_jal := io.enq.bits.is_jal&&(i.U===io.enq.bits.cfi_idx.bits)
         in_entry(i).bits.is_jalr:= io.enq.bits.is_jalr&&(i.U===io.enq.bits.cfi_idx.bits)
         in_entry(i).bits.pc_off := i.U<<2
+        if(hasDebug){
+            in_entry(i).bits.pc := (i.U<<2) + io.enq.bits.pc
+        }
         in_entry(i).bits.taken  := io.enq.bits.cfi_taken&&(i.U===io.enq.bits.cfi_idx.bits)
         // in_entry(i).bits.uopc   := DontCare
         

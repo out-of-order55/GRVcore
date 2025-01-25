@@ -9,17 +9,6 @@ import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
-class SimTop (implicit p:Parameters)extends Module{
-  
-  val m = LazyModule(new TileTest)
-  // // val m =Module(new DispatcherTest())
-  // m.dontTouchPorts()
-  val n= Module(m.module)
-
-  n.dontTouchPorts()
-  // // bp.f3_resp:=DontCare
-  // // bp.dontTouchPorts()
-}
 object Elaborate extends App {
     SimTable.printLookupTables()
     println("-----------------Generate Verilog--------------------")

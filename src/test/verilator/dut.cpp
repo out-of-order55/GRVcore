@@ -90,6 +90,9 @@ void difftest_pipeline(int pc,int finish) {
   }
 }
 bool time1=false;
+void super_difftest_step(vaddr_t pc1, vaddr_t pc2,int valid,int data1,int data2,int num){
+
+} 
 void difftest_step(vaddr_t pc, vaddr_t npc,bool diff_mode) {
   // if(inst_num==1){
   //   printf("diff\n");

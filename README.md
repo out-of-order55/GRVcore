@@ -54,6 +54,8 @@ GRVCore
 
 2024/1/21：之前好长时间没做，目前完成了lsu，通过了简易的测试，所有模块大致编写并测试完成，接下来开始组装
 
+2024/1/25：今天移植了香山的difftest，香山的difftest有很多东西（包括lightsss等)，之后会花时间去读读源码，然后移植的时候一直显示报错VsimTop找不到端口，最后发现将difftest写成了difftesst
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

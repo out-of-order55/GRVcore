@@ -96,13 +96,13 @@ GenerateV ?=$(shell find $(abspath $(VERILOG_FILE))   -name "*.sv")
 PRJ = playground
 
 
-NOOP_HOME  ?= $(WORK_DIR)/difftest
+NOOP_HOME  ?= $(WORK_DIR)
 export NOOP_HOME
 
 
 emu: verilog
 	@echo "------------------DiffTest------------------------"
-	@$(MAKE) -C difftest emu DESIGN_DIR=$(WORK_DIR)  WITH_CHISELDB=0 WITH_CONSTANTIN=0  NUM_CORES=1
+	@$(MAKE) -C ./difftest emu DESIGN_DIR=$(WORK_DIR)  WITH_CHISELDB=0 WITH_CONSTANTIN=0  NUM_CORES=1
 
 sim-verilog:
 	test -d $(VERILOG_FILE)/rtl||
@@ -113,7 +113,7 @@ verilog:
 	@echo "---------------- GENERATE VERILOG ----------------"
 	
 	@mkdir -p $(VERILOG_FILE)
-	mill  -i  -j 16 $(PRJ).runMain Elaborate  --target-dir $(VERILOG_FILE)
+	mill  -i  -j 16 $(PRJ).runMain Elaborate  --split-verilog --target-dir $(VERILOG_FILE)
 # @echo $(GenerateV) $(WORK_DIR)/vsrc
 # @if [ -n "$(GenerateV)" ]; then \
 # 	echo "Copying $(GenerateV) to $(WORK_DIR)/vsrc"; \
@@ -124,8 +124,7 @@ verilog:
 debug :
 	@echo "---------------- GENERATE VERILOG ----------------"
 	@mkdir -p $(VERILOG_FILE)
-	sh ./wave.sh
-	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
+	@sh ./wave.sh&&gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 # @rm  -r $(VERILOG_FILE)
 test:
 	@echo "-------------------- UNIT TEST----------------"
