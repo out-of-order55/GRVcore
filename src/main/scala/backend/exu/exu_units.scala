@@ -53,7 +53,7 @@ class ALUExuUnit(
     def length = iresp_fu_units.length
     val numIrfReadPorts = Seq(hasALU,hasDIV,hasMUL,hasJMP).count(identity)
         // (if (hasALU) 1 else 0) + (if (hasDIV) 1 else 0) + (if (hasMUL) 1 else 0) + (if (hasJMP) 1 else 0)
-    val numIrfWritePorts = Seq(hasALU,hasDIV,hasMUL).count(identity)
+    val numIrfWritePorts = Seq(hasALU,hasDIV,hasJMP,hasMUL).count(identity)
     
 
     val io = IO(new Bundle {
@@ -67,7 +67,7 @@ class ALUExuUnit(
         val brupdate = if (hasJMP) Output(Valid(new BrUpdateInfo)) else null
     })
 
-    io.req.ready := false.B
+    
 
     for(i <- 0 until numIrfWritePorts){
         io.iresp(i).valid := false.B
@@ -159,7 +159,7 @@ class ALUExuUnit(
     // io.iresp.bits.wb_data := PriorityMux(iresp_fu_units.map(f =>
     //     (f.io.resp.valid, f.io.resp.bits.wb_data)).toSeq)
     if(numIrfWritePorts==1){
-        io.iresp(0).valid := iresp_fu_units(0).io.resp.ready
+        io.iresp(0).valid := iresp_fu_units(0).io.resp.valid
         io.iresp(0).bits  := iresp_fu_units(0).io.resp.bits
     }else{
         for(i <- 0 until numIrfWritePorts){
@@ -168,7 +168,7 @@ class ALUExuUnit(
             }
             require(numIrfWritePorts>=1)
             
-            io.iresp(i).valid := iresp_fu_units(i).io.resp.ready
+            io.iresp(i).valid := iresp_fu_units(i).io.resp.valid
             io.iresp(i).bits  := iresp_fu_units(i).io.resp.bits
         }
     }
@@ -180,4 +180,5 @@ class ALUExuUnit(
         muld = hasMUL || hasDIV
         )
     }
+    io.req.ready := Mux(hasDIV.B,!div_bsy,true.B)
 }

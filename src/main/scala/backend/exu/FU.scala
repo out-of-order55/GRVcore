@@ -48,6 +48,7 @@ val needsFcsr: Boolean = false)
 
     val imm_xprlen = ImmGen(uop.imm_packed, uop.ctrl.imm_sel)
     val op1_data = Wire(UInt(XLEN.W))
+    dontTouch(imm_xprlen)
     io.resp.valid := false.B
     io.resp.bits.uop := uop
     io.resp.bits.wb_data:= DontCare
@@ -67,6 +68,8 @@ val needsFcsr: Boolean = false)
                     Mux(uop.ctrl.op2_sel === OP2_IMMC, io.req.bits.uop.prs1(4,0),
                     Mux(uop.ctrl.op2_sel === OP2_RS2 , io.req.bits.rs2_data,
                     Mux(uop.ctrl.op2_sel === OP2_NEXT,4.U,0.U))))
+    dontTouch(op1_data)
+    dontTouch(op2_data)
 }
 
 class ALUUnit(dataWidth: Int)(implicit p: Parameters)
@@ -129,15 +132,15 @@ extends FunctionalUnit(
     val is_jal         = io.req.valid && !killed && uop.is_jal
     val is_jalr        = io.req.valid && !killed && uop.is_jalr
 
-    when (is_br || is_jalr) {
+    when (is_br || is_jal) {
         if (!isJmpUnit) {
-        assert (pc_sel =/= PC_JALR)
+            assert (pc_sel =/= PC_JALR)
         }
         when (pc_sel === PC_PLUS4) {
-        mispredict := uop.taken
+            mispredict := uop.taken
         }
         when (pc_sel === PC_BRJMP) {
-        mispredict := !uop.taken
+            mispredict := !uop.taken
         }
     }
 
@@ -154,17 +157,18 @@ extends FunctionalUnit(
 
     val cfi_idx = (uop.pc_off/(XLEN/8).U)(log2Ceil(ICacheParam.blockBytes)-1,0)
 
+
     when (pc_sel === PC_JALR) {
-    mispredict := 
-                    (io.get_ftq_pc.next_pc =/= target_XLEN) ||
-                    !io.get_ftq_pc.entry.cfi_idx.valid ||
-                    (io.get_ftq_pc.entry.cfi_idx.bits =/= cfi_idx)
+        mispredict := 
+                        (io.get_ftq_pc.next_pc =/= target_XLEN) ||
+                        !io.get_ftq_pc.entry.cfi_idx.valid ||
+                        (io.get_ftq_pc.entry.cfi_idx.bits =/= cfi_idx)
     }
 
     io.get_ftq_pc.ftq_idx   := uop.ftq_idx
     brinfo.uop              := uop
     brinfo.br_mask          := UIntToOH(uop.pc_off/(XLEN/8).U)
-    brinfo.cfi_idx.valid    := io.req.fire
+    brinfo.cfi_idx.valid    := (io.req.fire)&&(uop.uopc=/=uopAUIPC)
     brinfo.cfi_idx.bits     := cfi_idx
     brinfo.cfi_taken        := is_taken
     brinfo.cfi_mispredicted := mispredict
@@ -173,11 +177,11 @@ extends FunctionalUnit(
     brinfo.is_jalr          := is_jalr
     brinfo.target           := target_XLEN
 
-    io.brinfo.valid:= io.req.fire
+    io.brinfo.valid:= (io.req.fire)&&(uop.uopc=/=uopAUIPC)
     io.brinfo.bits := brinfo
 
     io.resp.valid := io.req.fire
-
+    io.resp.bits.wb_data := Mux(uop.uopc===uopAUIPC,op1_data+op2_data,op1_data+4.U)
 }
 //rocketchip 的面积为14000左右
 class MULUnit(dataWidth: Int,numStages:Int)(implicit p: Parameters)

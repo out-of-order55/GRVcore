@@ -43,7 +43,7 @@ class FrontendIO(implicit p: Parameters) extends GRVBundle with HasFrontendParam
 
     //后端重定向
 
-    val brupdate          = Output(new BrUpdateInfo)
+    val brupdate          = Valid(new BrUpdateInfo)
     val redirect_flush    = Output(Bool())//冲刷
     val redirect_val      = Output(Bool())//重定向
     val redirect_pc       = Output(UInt(XLEN.W))
@@ -85,7 +85,9 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
         bankAlign(addr) + blockBytes.U
     }
     val start        = RegInit(false.B)
-    start := true.B
+    when((!reset.asBool)){
+        start := true.B
+    }
     val start1 = RegNext(start)
 
     val s0_vpc       = WireInit(0.U(XLEN.W))
@@ -249,10 +251,15 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     ftq.io.brupdate  <> io.cpu.brupdate
     ftq.io.get_ftq_pc<> io.cpu.get_pc
     ftq.io.deq.valid := io.cpu.commit.valid.reduce(_||_)
-    ftq.io.deq.bits  := DontCare
+
+    val commit_idx = PriorityEncoder(io.cpu.commit.valid)
+    dontTouch(commit_idx)
+    ftq.io.deq.bits  := io.cpu.commit.commit_uops(commit_idx).ftq_idx
     val cpu_flush       = io.cpu.redirect_flush
     val cpu_redirect    = io.cpu.redirect_val  
     val cpu_redirect_pc = io.cpu.redirect_pc   
+    dontTouch(cpu_flush)
+    dontTouch(cpu_redirect_pc)
     icache.io.invalidate:= io.cpu.flush_icache 
     ibuf.io.clear := false.B
     s3_clear      := false.B

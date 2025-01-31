@@ -294,16 +294,16 @@ class FrontEndTest (implicit p:Parameters)extends GRVModule with HasFrontendPara
     ftq.io.deq.valid := update.io.update.valid
     ftq.io.deq.bits  := DontCare
 
-    ftq.io.brupdate.br_mask          := update.io.update.bits.br_mask
-    ftq.io.brupdate.cfi_idx          := update.io.update.bits.cfi_idx         
-    ftq.io.brupdate.cfi_taken        := update.io.update.bits.cfi_taken       
-    ftq.io.brupdate.cfi_mispredicted := update.io.update.bits.is_mispredict_update
-    // ftq.io.brupdate.cfi_is_call      := update.io.update.bits.cfi_is_call     
-    // ftq.io.brupdate.cfi_is_ret       := update.io.update.bits.cfi_is_ret      
-    ftq.io.brupdate.cfi_type         := update.io.update.bits.cfi_type        
-    ftq.io.brupdate.is_jal           := update.io.update.bits.is_jal          
-    ftq.io.brupdate.is_jalr          := update.io.update.bits.is_jalr         
-    ftq.io.brupdate.target           := update.io.update.bits.target          
+    // ftq.io.brupdate.br_mask          := update.io.update.bits.br_mask
+    // ftq.io.brupdate.cfi_idx          := update.io.update.bits.cfi_idx         
+    // ftq.io.brupdate.cfi_taken        := update.io.update.bits.cfi_taken       
+    // ftq.io.brupdate.cfi_mispredicted := update.io.update.bits.is_mispredict_update
+    // // ftq.io.brupdate.cfi_is_call      := update.io.update.bits.cfi_is_call     
+    // // ftq.io.brupdate.cfi_is_ret       := update.io.update.bits.cfi_is_ret      
+    // ftq.io.brupdate.cfi_type         := update.io.update.bits.cfi_type        
+    // ftq.io.brupdate.is_jal           := update.io.update.bits.is_jal          
+    // ftq.io.brupdate.is_jalr          := update.io.update.bits.is_jalr         
+    // ftq.io.brupdate.target           := update.io.update.bits.target          
 /////////////////////////////////////////
     s0_valid := (start)&(!start1)|| ftq.io.bpdupdate.valid
     s0_vpc   := update.io.s0_vpc

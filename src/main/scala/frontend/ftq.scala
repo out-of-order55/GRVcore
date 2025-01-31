@@ -86,7 +86,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
         val get_ftq_pc = new GetPCFromFtqIO()
         //分支预测重定向：commit阶段
         val redirect = Input(Bool())//
-        val brupdate = Input(new BrUpdateInfo)
+        val brupdate = Flipped(Valid(new BrUpdateInfo))
         val bpdupdate = Output(Valid(new BranchPredictionUpdate))
         //更新RAS
         val ras_update = Output(new RASUpdate)
@@ -108,7 +108,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 
     io.enq.ready := !full//或者commit更新
     val do_enq   = WireInit(io.enq.fire)
-    full := RegNext((enq_ptr+1.U)===deq_ptr)
+    full := RegNext((enq_ptr+1.U)===comm_ptr)
     dontTouch(full)
     dontTouch(do_enq)
 /////////////////enq logic////////////
@@ -139,20 +139,35 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 //////////////////commit logic//////////
     val do_commit_update = io.deq.valid
     
-    val empty            = RegNext(deq_ptr+1.U===enq_ptr)
-    val commit_mispred   = RegNext(io.redirect&&io.brupdate.cfi_mispredicted)
-    val commit_brInfo    = RegNext(brInfo(deq_ptr))
-    val commit_pc        = RegNext(pcs(deq_ptr))
-    val commit_meta      = meta.read(deq_ptr,true.B)
-    val commit_ghist     = ghist.read(deq_ptr,true.B)
-    val commit_next_pc   = commit_pc + (io.brupdate.cfi_idx.bits<<2)+4.U 
-    when(io.deq.valid){
-        deq_ptr := deq_ptr + 1.U
-    }
-    //预测失败，恢复写指针
+    val empty            = RegNext(comm_ptr+1.U===enq_ptr)
+    val commit_mispred   = (io.redirect&&io.brupdate.bits.cfi_mispredicted)
+    val commit_idx       = io.deq.bits
+    val commit_brInfo    = RegNext(brInfo(commit_idx))
+    val commit_pc        = RegNext(pcs(commit_idx))
+    val commit_meta      = meta.read(commit_idx,true.B)
+    val commit_ghist     = ghist.read(commit_idx,true.B)
+    val commit_next_pc   = commit_pc + (io.brupdate.bits.cfi_idx.bits<<2)+4.U 
+    val commit_update = WireInit(false.B)
+    //预测失败，恢复写指针，由于此时已经是最旧的指令，故直接将指针置为0即可
+    //这里有一个小tricky：deq指针仅仅昭示本次提交最年轻的指令的idx，如果commit——ptr和deq不同，这时comm_ptr就需要自增到deq指针,
+    /* 举例：假如fetchwidth=4，retirewidth=2
+    第一次提交：inst0，inst1，此时deq_ptr=0 comm_ptr=0
+    第二次提交：inst2，inst3，此时deq_ptr=0 comm_ptr=0
+    第三次提交：inst4，inst5，此时deq_ptr=1 comm_ptr=0
+    由于此时不同，需要更新comm_ptr
+    这个做法有个弊端：当第二次提交时ftq会出现假满：也就是此时第二次提交后有一个空项，但必须得下个周期才可以使用
+     */
+    commit_update := deq_ptr=/=comm_ptr
     when(io.redirect){
-        enq_ptr := deq_ptr + 1.U
+        enq_ptr := 0.U
+        deq_ptr := 0.U
+        comm_ptr:= 0.U
+    }.elsewhen(io.deq.valid){
+        deq_ptr := io.deq.bits
+    }.elsewhen(commit_update){
+        comm_ptr := comm_ptr + 1.U
     }
+    
     io.bpdupdate.valid := false.B
     io.bpdupdate.bits := DontCare
     io.ras_update.update_type.valid := false.B
@@ -163,20 +178,20 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
     //提交的下个周期更新bp
     dontTouch(do_commit_update)
     when(RegNext(do_commit_update)){
-        io.bpdupdate.valid          := true.B
+        io.bpdupdate.valid          := RegNext(io.brupdate.valid)
         io.bpdupdate.bits.pc        := bankAlign(commit_pc)
         //如果预测成功，pcs deq_ptr的下一个pc必然是target
-        io.bpdupdate.bits.target    := Mux(commit_mispred,RegNext(io.brupdate.target),RegNext(pcs(deq_ptr+1.U)))
+        io.bpdupdate.bits.target    := Mux(commit_mispred,RegNext(io.brupdate.bits.target),RegNext(pcs(commit_idx+1.U)))
         io.bpdupdate.bits.meta      := commit_meta
         io.bpdupdate.bits.ghist     := commit_ghist
-        io.bpdupdate.bits.br_mask   := Mux(commit_mispred,RegNext(io.brupdate.br_mask),commit_brInfo.br_mask)
-        io.bpdupdate.bits.cfi_idx   := Mux(commit_mispred,RegNext(io.brupdate.cfi_idx),commit_brInfo.cfi_idx)
-        io.bpdupdate.bits.cfi_taken := RegNext(io.brupdate.cfi_taken)
-        io.bpdupdate.bits.cfi_type  := Mux(commit_mispred,RegNext(io.brupdate.cfi_type),commit_brInfo.cfi_type)
+        io.bpdupdate.bits.br_mask   := Mux(commit_mispred,RegNext(io.brupdate.bits.br_mask),commit_brInfo.br_mask)
+        io.bpdupdate.bits.cfi_idx   := Mux(commit_mispred,RegNext(io.brupdate.bits.cfi_idx),commit_brInfo.cfi_idx)
+        io.bpdupdate.bits.cfi_taken := RegNext(io.brupdate.bits.cfi_taken)
+        io.bpdupdate.bits.cfi_type  := Mux(commit_mispred,RegNext(io.brupdate.bits.cfi_type),commit_brInfo.cfi_type)
         io.bpdupdate.bits.is_mispredict_update:=commit_mispred
         io.bpdupdate.bits.is_commit_update:= commit_mispred
-        io.bpdupdate.bits.is_jal    := Mux(commit_mispred,RegNext(io.brupdate.is_jal),commit_brInfo.is_jal)
-        io.bpdupdate.bits.is_jalr   := Mux(commit_mispred,RegNext(io.brupdate.is_jalr),commit_brInfo.is_jalr)
+        io.bpdupdate.bits.is_jal    := Mux(commit_mispred,RegNext(io.brupdate.bits.is_jal),commit_brInfo.is_jal)
+        io.bpdupdate.bits.is_jalr   := Mux(commit_mispred,RegNext(io.brupdate.bits.is_jalr),commit_brInfo.is_jalr)
         //更新commitRAS
         io.ras_update.update_type.valid:= RegNext(do_commit_update)
         io.ras_update.update_type.bits := io.bpdupdate.bits.cfi_type

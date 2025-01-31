@@ -63,6 +63,7 @@ VERILATOR_FLAGS += -Wno-WIDTHEXPAND
 VERILATOR_FLAGS += -Wno-SYNCASYNCNET
 VERILATOR_FLAGS += -Wno-MODDUP
 VERILATOR_FLAGS += -Wno-PINMISSING
+VERILATOR_FLAGS += -Wno-EOFNEWLINE
 #ignore unused signal
 # VERILATOR_FLAGS += +incdir+$(DEFINE_INC) 
 VERILATOR_FLAGS += +incdir+$(WORK_DIR)/vsrc 
@@ -80,7 +81,9 @@ VERILATOR_INPUT +=  $(shell find $(abspath $(WORK_DIR)/src/test/unit_test) -name
 
 
 
-include difftest.mk
+# include difftest.mk
+DIFF_REF_SO = $(WORK_DIR)/image/riscv32-nemu-interpreter-so
+ARGS_DIFF = --diff=$(DIFF_REF_SO)
 # include $(WORK_DIR)/src/test/verilator/filelist.mk
 IMG?=
 override ARGS ?= --log=$(BUILD_DIR)/npc-log.txt
@@ -113,7 +116,7 @@ verilog:
 	@echo "---------------- GENERATE VERILOG ----------------"
 	
 	@mkdir -p $(VERILOG_FILE)
-	mill  -i  -j 16 $(PRJ).runMain Elaborate  --split-verilog --target-dir $(VERILOG_FILE)
+	mill  -i -j 8 $(PRJ).runMain Elaborate  --split-verilog --target-dir $(VERILOG_FILE)
 # @echo $(GenerateV) $(WORK_DIR)/vsrc
 # @if [ -n "$(GenerateV)" ]; then \
 # 	echo "Copying $(GenerateV) to $(WORK_DIR)/vsrc"; \
@@ -123,6 +126,7 @@ verilog:
 
 debug :
 	@echo "---------------- GENERATE VERILOG ----------------"
+# @VERILATOR_ROOT
 	@mkdir -p $(VERILOG_FILE)
 	@sh ./wave.sh&&gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 # @rm  -r $(VERILOG_FILE)

@@ -33,7 +33,7 @@ val Bypass:Seq[Boolean]
         val readports  = Vec(numReadPorts,new RegFileReadIO)
         val writeports = Vec(numWritePorts,new RegFileWriteIO) 
 
-        val debugports = if(hasDebug)Vec(coreWidth,new RegFileDebugIO)else null
+        // val debugports = if(hasDebug)Vec(coreWidth,new RegFileDebugIO)else null
     })
     val regfile = Reg(Vec(maxPregSz,UInt(XLEN.W)))
     regfile(0):= 0.U
@@ -46,9 +46,16 @@ val Bypass:Seq[Boolean]
     val waddr = WireInit(VecInit(io.writeports.map(_.addr)))
     val wdata = WireInit(VecInit(io.writeports.map(_.data)))
     val wen   = WireInit(VecInit(io.writeports.map(_.wen)))
-    
-    for(i <- 0 until numWritePorts){
-        regfile(waddr(i)) := Mux(wen(i),wdata(i),regfile(waddr(i)))
+    dontTouch(waddr)
+    dontTouch(wen)
+    dontTouch(wdata)
+
+    for(i <- 0 until numPregs){
+        val wenOH= VecInit((0 until numWritePorts).map{idx=>
+            wen(idx)&&waddr(idx)===i.U
+        })
+        val wen_data = Mux1H(wenOH,wdata) 
+        regfile(i) := Mux(wenOH.reduce(_||_),wen_data,regfile(i))
     }
     if (Bypass.reduce(_||_)) {
         val bypassable_wports = ArrayBuffer[RegFileWriteIO]()
@@ -76,9 +83,9 @@ val Bypass:Seq[Boolean]
             "[regfile] too many writers a register")
         }
     }
-    if(hasDebug){
-        for(i <- 0 until coreWidth){
-            io.debugports(i).data := Mux(io.debugports(i).ren,regfile(io.debugports(i).addr),0.U)
-        }
-    }
+    // if(hasDebug){
+    //     for(i <- 0 until coreWidth){
+    //         io.debugports(i).data := Mux(io.debugports(i).ren,regfile(io.debugports(i).addr),0.U)
+    //     }
+    // }
 }

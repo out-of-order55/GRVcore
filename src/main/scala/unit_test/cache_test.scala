@@ -56,8 +56,8 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
         val wstrb = RegNext(in.w.bits.strb)
         // burstEnable:=()
 
-        val beatBytes   = WireInit((in.ar.bits.params.dataBits/8).U)
-        val transLen    = WireInit((in.ar.bits.len))
+        val beatBytes   = RegEnable((in.ar.bits.params.dataBits/8).U,in.ar.fire)
+        val transLen    = RegEnable(in.ar.bits.len,in.ar.fire)
         val raddr       = Reg(UInt(32.W))
         val waddr       = Reg(UInt(32.W))
 
@@ -101,13 +101,13 @@ class AXI4SRAM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
 
         
         sram.io.raddr := raddr
-        sram.io.ren := state===s_wait_ack
+        sram.io.ren   := state===s_wait_ack
 
-        sram.io.waddr := waddr
+        sram.io.waddr   := waddr
         sram.io.wen     := wen
         sram.io.wdata   := wdata
         sram.io.wstrb   := wstrb
-        in.ar.ready := (state === s_idle)
+        in.ar.ready     := (state === s_idle)
         
         assert(!(in.ar.fire && in.ar.bits.size === 3.U), "do not support 8 byte transfter")
 

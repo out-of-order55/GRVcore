@@ -10,6 +10,7 @@ extern uint8_t mem[CONFIG_MSIZE];
 extern uint32_t last_inst;
 extern char logbuf[128];
 extern CPU_state cpu;
+extern Commit commit;
 extern uint64_t InitTime;
 extern const char *regs[];
 extern bool  timer_addr;

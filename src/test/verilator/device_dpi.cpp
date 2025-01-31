@@ -152,39 +152,9 @@ extern "C" void psram(uint32_t addr,uint32_t wen,uint32_t ren,uint32_t wdata,uin
         //printf("wdata:%08x\n",*(uint32_t *)(&psram_data[addr]));
     } 
 }
-extern "C" void mrom_read(uint32_t addr, uint32_t *data) { 
-    
-    *data = *(uint32_t *)(&mem[addr-MROM_BASE]); 
-}
-extern "C" void dev_read(int addr,int waddr){
-    if(addr==LINE_STATE||addr==UART_BUF){
-        diff_amend=true;
-    }
 
-    if(addr==PS2){
-        //printf("ps2\n");
-        diff_amend=true;
-    }
-    if(addr>=VGA&&addr<=VGA+0x1fffff){
-        diff_amend=true;
-    }
-}
-extern "C" void clint_read(int addr,int ren){
-    if((addr==CONFIG_TIMER)&&ren){
-        diff_amend=true;
-    }
-    else if((addr==CONFIG_TIMER+4)&&ren){
-        diff_amend=true;
-    }
-}
-extern "C" void debug_info(int pc,int inst,int valid,int rst,int wen,int waddr,int wdata){
-    rst_debug   = rst;
-    pc_debug    = pc;
-    inst_debug  = inst;
-    valid_debug = valid;
-    if((valid==1&&(wen==1))){
-        // printf("cpu en %08x addr %d data %08x\n",wen,waddr,wdata);
-        cpu.gpr[waddr]=wdata;
 
-    }
-}
+
+
+
+

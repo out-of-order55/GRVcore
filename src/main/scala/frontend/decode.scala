@@ -88,12 +88,12 @@ object XDecode extends DecodeConstants
     AUIPC   -> List(Y, uopAUIPC, IQT_INT, FU_JMP , RT_FIX, RT_X  , RT_X  , IS_U, N, N,N, N, N, M_X  , 1.U, N, N, N, N, N, CSR.N), // use BRU for the PC read
     JAL     -> List(Y, uopJAL  , IQT_INT, FU_JMP , RT_FIX, RT_X  , RT_X  , IS_J, N, N,N, N, N, M_X  , 1.U, N, N, N, N, N, CSR.N),
     JALR    -> List(Y, uopJALR , IQT_INT, FU_JMP , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, N, N, N, N, N, CSR.N),
-    BEQ     -> List(Y, uopBEQ  , IQT_INT, FU_ALU , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
-    BNE     -> List(Y, uopBNE  , IQT_INT, FU_ALU , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
-    BGE     -> List(Y, uopBGE  , IQT_INT, FU_ALU , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
-    BGEU    -> List(Y, uopBGEU , IQT_INT, FU_ALU , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
-    BLT     -> List(Y, uopBLT  , IQT_INT, FU_ALU , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
-    BLTU    -> List(Y, uopBLTU , IQT_INT, FU_ALU , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
+    BEQ     -> List(Y, uopBEQ  , IQT_INT, FU_JMP , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
+    BNE     -> List(Y, uopBNE  , IQT_INT, FU_JMP , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
+    BGE     -> List(Y, uopBGE  , IQT_INT, FU_JMP , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
+    BGEU    -> List(Y, uopBGEU , IQT_INT, FU_JMP , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
+    BLT     -> List(Y, uopBLT  , IQT_INT, FU_JMP , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
+    BLTU    -> List(Y, uopBLTU , IQT_INT, FU_JMP , RT_X  , RT_FIX, RT_FIX, IS_B, N, N,N, N, N, M_X  , 0.U, N, Y, N, N, N, CSR.N),
 
     // I-type, the imma2 holds the CSR register.N,
     CSRRW   -> List(Y, uopCSRRW, IQT_INT, FU_CSR , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 0.U, N, N, N, Y, Y, CSR.W),

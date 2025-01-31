@@ -43,10 +43,10 @@ class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
     val wb_resp     = Flipped(Vec(numWakeupPorts, Valid(new ExuResp)))
 
     val lsuexc      = Flipped(Valid(new Exception))
-    val br_info     = Input(new BrUpdateInfo)
+    val br_info     =  Flipped(Valid(new BrUpdateInfo))
 
 
-    val br_update   = Output(new BrUpdateInfo)
+    val br_update   = Valid(new BrUpdateInfo)
     val commit      = Valid(new CommitMsg)
     val flush       = Valid(new CommitExcMsg)
 }
@@ -76,7 +76,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val rob_deq_ptr = RegInit(0.U(log2Ceil(ROBEntry+1).W))
     val full = Wire(Bool())
     
-    val do_enq = WireInit(VecInit(io.enq.uops.map{i=>i.fire&&(!rob_state===s_redirect)}))
+    val do_enq = WireInit(VecInit(io.enq.uops.map{i=>i.fire&&(rob_state=/=s_redirect)}))
     // val do_deq = Wire(Bool())
 
     
@@ -97,7 +97,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     def GetPtrVal(ptr:UInt):UInt={
         return ptr(RobSz-1,0)
     }
-    val rob_entry   = RegInit(VecInit.fill(coreWidth)(VecInit.fill(ROBEntry)(0.U.asTypeOf(new ROBEntryBundle))))
+    val rob_entry   = RegInit(VecInit.fill(coreWidth)(VecInit.fill(ROBEntry/coreWidth)(0.U.asTypeOf(new ROBEntryBundle))))
     
     val rob_enq_val = GetPtrVal(rob_enq_ptr)
     val rob_deq_val = GetPtrVal(rob_deq_ptr)
@@ -106,9 +106,9 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     //enq
     val enqInfo     = WireInit(io.enq)
     val br_info     = WireInit(io.br_info)
-    val flush       = WireInit(br_info.cfi_mispredicted)
+    val flush       = WireInit(br_info.bits.cfi_mispredicted&&br_info.valid)
     val is_exc_inst_commit = WireInit(false.B)
-    val br_update   = RegInit(0.U.asTypeOf(new BrUpdateInfo))
+    val br_update   = RegInit(0.U.asTypeOf(Valid(new BrUpdateInfo)))
 
     val deq_vld_mask    = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=> i(rob_deq_val).valid}).asUInt))
     val deq_finish_mask = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish}).asUInt))
@@ -119,7 +119,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
      */
     val is_commit_flush = WireInit(MaskLower(VecInit(rob_entry.map{i=>i(rob_deq_val).finish&&i(rob_deq_val).flush}).asUInt))
     val is_exc_oldest   = Wire(Bool())
-    is_exc_oldest := ((is_commit_flush)&(deq_finish_mask))===is_commit_flush
+    is_exc_oldest := (is_commit_flush=/=0.U)&&(((is_commit_flush)&(deq_finish_mask))===is_commit_flush)
     dontTouch(is_exc_oldest)
     val can_commit      = ((((deq_vld_mask)===(deq_finish_mask)))||is_exc_oldest)&&(deq_vld_mask=/=0.U)
 
@@ -130,24 +130,31 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         i.ready := (!full)&&(rob_state===s_normal)
         } 
     io.commit:= DontCare
+    for(i<- 0 until coreWidth){
+        io.commit.bits.valid(i) := false.B
+    }
     io.commit.valid := false.B
     io.enq_idxs:= DontCare
     io.flush := DontCare
     io.flush.valid := false.B
+    dontTouch(do_enq)
+    dontTouch(rob_deq_val)
     for(i <- 0 until coreWidth){
 
         //enq
         when(do_enq(i)){
-            rob_entry(i)(rob_enq_val).finish := false.B
+            // rob_entry(i)(rob_enq_val).finish := false.B
             rob_entry(i)(rob_enq_val).valid := enqInfo.uops(i).valid
             rob_entry(i)(rob_enq_val).uop   := enqInfo.uops(i).bits
-            io.enq_idxs(i).bits := rob_enq_val + i.U
+            io.enq_idxs(i).bits := (rob_enq_val<<1) + i.U
             io.enq_idxs(i).valid:= true.B
         }
         
         //deq
         when(can_commit){
-            rob_entry(i)(rob_deq_val).valid:=false.B
+            rob_entry(i)(rob_deq_val).valid  := false.B
+            rob_entry(i)(rob_deq_val).finish := false.B
+            rob_entry(i)(rob_deq_val).flush  := false.B
             io.commit.valid := true.B
             io.commit.bits.valid(i) := rob_entry(i)(rob_deq_val).valid
             io.commit.bits.commit_uops(i):=rob_entry(i)(rob_deq_val).uop
@@ -157,11 +164,11 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         exc
         此时处理来自执行单元的异常，并且更新uop，以便之后br_update
          */
-        val br_miss_bank = GetBankIdx((br_info.uop.rob_idx))
-        val br_miss_row  = GetRowIdx((br_info.uop.rob_idx))
-        when(br_info.cfi_mispredicted){
+        val br_miss_bank = GetBankIdx((br_info.bits.uop.rob_idx))
+        val br_miss_row  = GetRowIdx((br_info.bits.uop.rob_idx))
+        when(flush){
             rob_entry(br_miss_bank)(br_miss_row).flush := true.B
-            rob_entry(br_miss_bank)(br_miss_row).uop   := br_info.uop
+            // rob_entry(br_miss_bank)(br_miss_row).uop   := br_info.bits.uop
         }
     }
     for(i<-0 until numWakeupPorts){
@@ -180,17 +187,23 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         rob_deq_ptr := rob_deq_ptr + 1.U
     }
     //只有在提交阶段才会更新br——update，并且只有这时候才会去处理update信息，
-    when(rob_state===s_normal){
+    when(is_exc_oldest){
+        br_update.valid := false.B
+    }
+    .elsewhen(rob_state===s_normal){
         br_update := br_info
     }
-    io.br_update := br_update
+    io.br_update.bits := br_update.bits
+    io.br_update.valid:= is_exc_oldest&&(br_update.bits.uop.fu_code===FU_JMP&&br_update.bits.uop.uopc=/=uopAUIPC)
     //exc handle
 
     when(is_exc_oldest){
         io.flush.valid := true.B
         io.flush.bits.cause := 0.U
         io.flush.bits.flush_typ := 0.U
+        io.flush.bits.epc   := br_update.bits.target
     }
+    dontTouch(io.flush)
     //两个周期的处理时间，
     //FSM
 	switch (rob_state){

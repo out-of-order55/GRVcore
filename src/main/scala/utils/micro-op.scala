@@ -14,6 +14,7 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     val pc_off           = UInt(log2Ceil(ICacheParam.blockBytes).W)
     val inst             = UInt(32.W)
     val pc = if(hasDebug) UInt(XLEN.W) else null
+    val wb_data = if(hasDebug) UInt(XLEN.W) else null
     //分支预测和类型
     val is_br            = Bool()                      
     val is_jalr          = Bool()                      

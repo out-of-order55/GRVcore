@@ -27,8 +27,8 @@ import org.chipsalliance.cde.config._
 //   com - Commit
 /* 
 目前的问题是：
-1.每个阶段的流水线必须得下一级全部接受才可以流动，之后可以将其分开，也就是分多个queue
-2.需要在执行阶段前加入exdecode
+1.每个阶段的流水线必须得下一级全部接受才可以流动，之后可以将其分开，也就是分多个queue:finish
+2.需要在执行阶段前加入exdecode:finish
 3.需要为每个ld_uop分配最近的stq_idx
  */
 class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParameters
@@ -46,7 +46,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
 
 
     val numIntIssueWakeupPorts = alujmp_unit.numIrfWritePorts + muldiv_unit.numIrfWritePorts + ldIssueParam.issueWidth// 4 for alu 2 for lsu
-
+    val busytable = Module(new BusyTable(numIntIssueWakeupPorts))
     val dispatcher       = Module(new ComplexDispatcher)
     dispatcher.io := DontCare
     //int 的可以发射到两个alu
@@ -75,9 +75,10 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
         Module(new Queue(Vec(coreWidth,new MicroOp), 1, pipe=true, flow=false)) }
     io.ifu.commit                     := rob.io.commit.bits
     io.ifu.fetchpacket.ready          := dec2rename.io.enq.ready
-    io.ifu.redirect_val         := false.B
-    io.ifu.redirect_flush       := false.B
-    io.ifu.flush_icache               := false.B   
+    io.ifu.redirect_val                 := false.B
+    io.ifu.redirect_flush               := false.B
+    io.ifu.flush_icache                 := false.B   
+    io.ifu.redirect_pc                  := 0.U
     io.ifu.get_pc                     <> alujmp_unit.io.get_ftq_pc
     
     io.ifu.brupdate <>rob.io.br_update
@@ -105,17 +106,28 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
 ///////////////////////////////////RENAME/////////////////////////////
     val rename2dis = withReset(reset.asBool||commit_flush.valid) {
         Module(new Queue(Vec(coreWidth,new MicroOp), 1, pipe=true, flow=false)) }
-    rename2dis.suggestName("dec2rename_pipe")
+    rename2dis.suggestName("rename2dis_pipe")
     rename_stage.io.dec_uops  <> dec2rename.io.deq 
     rename_stage.io.commit    := rob.io.commit.bits
     rename_stage.io.redirect  := commit_flush.valid
     rename2dis.io.enq<>rename_stage.io.dis_uops  
     rename2dis.io.deq.ready   := dispatcher.io.ren_uops.map(_.ready).reduce(_&&_)
-///////////////////////////////////DISPATCHER//////////////////////////
-    
+
+
+///////////////////////////////////Busytable&dis///////////////////////////
+
+    val rename_uop = WireInit(rename2dis.io.deq.bits)
+    val rename_req = WireInit(rename2dis.io.deq.valid)
     for(i <- 0 until coreWidth){
-        dispatcher.io.ren_uops(i).bits := rename2dis.io.deq.bits(i)
-        dispatcher.io.ren_uops(i).valid:= rename2dis.io.deq.valid
+        busytable.io.ren_uops(i).valid := rename_req
+        busytable.io.ren_uops(i).bits  := rename2dis.io.deq.bits(i)
+        rename_uop(i).prs1_busy := busytable.io.busy_resps(i).prs1_busy
+        rename_uop(i).prs2_busy := busytable.io.busy_resps(i).prs2_busy
+    }
+///////////////////////////////////DISPATCHER//////////////////////////
+    for(i <- 0 until coreWidth){
+        dispatcher.io.ren_uops(i).bits := rename_uop(i)
+        dispatcher.io.ren_uops(i).valid:= rename_req
     }
     //dispatch 按照type分发，所以dispatch一样
     // rob.io.enq.uops <> dispatcher.io.dis_uops(0)
@@ -185,23 +197,30 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
 ///////////////////////////////////ISSUE PIPE///////////////////////////////
     val wb_resp  = VecInit(Seq(alujmp_unit.io.iresp.map(_.bits),muldiv_unit.io.iresp.map(_.bits),io.lsu.ld_wb_resp.map(_.bits)).flatten)
     val wb_resp_valid  = VecInit(Seq(alujmp_unit.io.iresp.map(_.valid),muldiv_unit.io.iresp.map(_.valid),io.lsu.ld_wb_resp.map(_.valid)).flatten)
-    val int_iss2rrd = withReset(reset.asBool||commit_flush.valid) {
-        Module(new Queue(Vec(intIssueParam.issueWidth,new MicroOp), 1, pipe=true, flow=false)) }
+    dontTouch(wb_resp)
+    dontTouch(wb_resp_valid)
+    dontTouch(alujmp_unit.io.iresp)
+    val int_iss2rrd = Seq.fill(intIssueParam.issueWidth)(withReset(reset.asBool||commit_flush.valid) {
+        Module(new Queue((new MicroOp), 1, pipe=true, flow=false)) })
+    int_iss2rrd.zipWithIndex.foreach { case (q, idx) => 
+        q.suggestName(s"int_iss2rrd_pipe_$idx") 
+    }
 
-    int_iss2rrd.suggestName("int_iss2rrd_pipe")
 
     val alu_ex_decoder =Module(new RegisterReadDecode(alujmp_unit.supportedFuncUnits))
     val muld_ex_decoder= Module(new RegisterReadDecode(muldiv_unit.supportedFuncUnits))
     //  <> int_iss_unit.io.issue_uops
+    //这里如果有一个有效的uop，就会全部有效，这里需要细分化
     val int_ex_decoder = Seq(alu_ex_decoder,muld_ex_decoder)
     
     for(i <- 0 until intIssueParam.issueWidth){
         val int_iss_uop = WireInit(int_iss_unit.io.issue_uops(i))
-        int_ex_decoder(i).io.iss_valid:=int_iss_uop.valid
-        int_ex_decoder(i).io.iss_uop  := int_iss_uop.bits
-        int_iss2rrd.io.enq.valid := int_iss_uop.valid&&int_ex_decoder(i).io.rrd_valid
-        int_iss2rrd.io.enq.bits(i) := int_ex_decoder(i).io.rrd_uop
-        int_iss_unit.io.issue_uops(i).ready := int_iss2rrd.io.enq.ready
+        dontTouch(int_ex_decoder(i).io.iss_valid)
+        int_ex_decoder(i).io.iss_valid      := int_iss_uop.valid
+        int_ex_decoder(i).io.iss_uop        := int_iss_uop.bits
+        int_iss2rrd(i).io.enq.valid         := int_iss_unit.io.issue_uops(i).valid
+        int_iss2rrd(i).io.enq.bits          := int_ex_decoder(i).io.rrd_uop
+        int_iss_unit.io.issue_uops(i).ready := int_iss2rrd(i).io.enq.ready
     }
 
     def memsupportedFuncUnits = {
@@ -213,35 +232,38 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     }
 
     val ld_ex_decoder = Seq.fill(ldIssueParam.issueWidth)(Module(new RegisterReadDecode(memsupportedFuncUnits)))
-    val ld_iss2rrd = withReset(reset.asBool||commit_flush.valid) {
-        Module(new Queue(Vec(ldIssueParam.issueWidth,new MicroOp), 1, pipe=true, flow=false)) }
-    
-    ld_iss2rrd.suggestName("ld_iss2rrd_pipe")
-    
+    val ld_iss2rrd = Seq.fill(ldIssueParam.issueWidth)(withReset(reset.asBool||commit_flush.valid) {
+        Module(new Queue(new MicroOp, 1, pipe=true, flow=false)) })
+
+    ld_iss2rrd.zipWithIndex.foreach { case (q, idx) => 
+        q.suggestName(s"ld_iss2rrd_pipe_$idx") 
+    }
     for(i <- 0 until ldIssueParam.issueWidth){
         val ld_iss_uop = WireInit(ld_iss_unit.io.issue_uops(i))
-        ld_ex_decoder(i).io.iss_valid   := ld_iss_uop.valid
-        ld_ex_decoder(i).io.iss_uop     := ld_iss_uop.bits
-        ld_iss2rrd.io.enq.valid         := ld_iss_uop.valid&&ld_ex_decoder(i).io.rrd_valid
-        ld_iss2rrd.io.enq.bits(i)       := ld_ex_decoder(i).io.rrd_uop
-        ld_iss_unit.io.issue_uops(i).ready := ld_iss2rrd.io.enq.ready
-        ld_iss_unit.io.fu_using(i) := mem_fu_types
+        ld_ex_decoder(i).io.iss_valid       := ld_iss_uop.valid
+        ld_ex_decoder(i).io.iss_uop         := ld_iss_uop.bits
+        ld_iss2rrd(i).io.enq.valid          := ld_iss_uop.valid&&ld_ex_decoder(i).io.rrd_valid
+        ld_iss2rrd(i).io.enq.bits           := ld_ex_decoder(i).io.rrd_uop
+        ld_iss_unit.io.issue_uops(i).ready  := ld_iss2rrd(i).io.enq.ready
+        ld_iss_unit.io.fu_using(i)          := mem_fu_types
     }
     
     // val ld_ex_decoder = Module(new RegisterReadDecode())
     val st_ex_decoder = Seq.fill(stIssueParam.issueWidth)(Module(new RegisterReadDecode(memsupportedFuncUnits)))
-    val st_iss2rrd    = withReset(reset.asBool||commit_flush.valid) {
-        Module(new Queue(Vec(stIssueParam.issueWidth,new MicroOp), 1, pipe=true, flow=false)) }
-    st_iss2rrd.suggestName("st_iss2rrd_pipe")
+    val st_iss2rrd    = Seq.fill(stIssueParam.issueWidth)(withReset(reset.asBool||commit_flush.valid) {
+        Module(new Queue(new MicroOp, 1, pipe=true, flow=false)) })
 
+    st_iss2rrd.zipWithIndex.foreach { case (q, idx) => 
+        q.suggestName(s"st_iss2rrd_pipe_$idx") 
+    }
     for(i <- 0 until stIssueParam.issueWidth){
         val st_iss_uop = WireInit(st_iss_unit.io.issue_uops(i))
-        st_ex_decoder(i).io.iss_valid   := st_iss_uop.valid
-        st_ex_decoder(i).io.iss_uop     := st_iss_uop.bits
-        st_iss2rrd.io.enq.valid         := st_iss_uop.valid&&st_ex_decoder(i).io.rrd_valid
-        st_iss2rrd.io.enq.bits(i)       := st_ex_decoder(i).io.rrd_uop
-        st_iss_unit.io.issue_uops(i).ready := st_iss2rrd.io.enq.ready
-        st_iss_unit.io.fu_using(i) := mem_fu_types
+        st_ex_decoder(i).io.iss_valid       := st_iss_uop.valid
+        st_ex_decoder(i).io.iss_uop         := st_iss_uop.bits
+        st_iss2rrd(i).io.enq.valid          := st_iss_uop.valid&&st_ex_decoder(i).io.rrd_valid
+        st_iss2rrd(i).io.enq.bits           := st_ex_decoder(i).io.rrd_uop
+        st_iss_unit.io.issue_uops(i).ready  := st_iss2rrd(i).io.enq.ready
+        st_iss_unit.io.fu_using(i)          := mem_fu_types
     }
     ///唤醒，这里目前有问题，delay需要改正
     for(i<- 0 until iss_length){
@@ -258,7 +280,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     
     val int_op = WireInit(VecInit.fill(intIssueParam.issueWidth)(0.U.asTypeOf(new ExuReq())))
     for(i <- 0 until intIssueParam.issueWidth){
-        val int_uop = int_iss2rrd.io.deq.bits(i)
+        val int_uop = int_iss2rrd(i).io.deq.bits
         val rs1_addr= int_uop.prs1
         val rs2_addr= int_uop.prs2
         regfiles.io.readports(2*i).addr := rs1_addr
@@ -274,7 +296,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val ld_op = WireInit(VecInit.fill(ldIssueParam.issueWidth)(0.U.asTypeOf(new LSUReq())))
     val ld_base_idx = intIssueParam.issueWidth
     for(i <- ld_base_idx until ld_base_idx+ldIssueParam.issueWidth){
-        val ld_uop = ld_iss2rrd.io.deq.bits(i-ld_base_idx)
+        val ld_uop = ld_iss2rrd(i-ld_base_idx).io.deq.bits
         val rs1_addr= ld_uop.prs1
         val rs2_addr= ld_uop.prs2
         regfiles.io.readports(2*i).addr := rs1_addr
@@ -290,7 +312,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val st_op = WireInit(VecInit.fill(stIssueParam.issueWidth)(0.U.asTypeOf(new LSUReq())))
     val st_base_idx = ldIssueParam.issueWidth + ld_base_idx
     for(i <- st_base_idx until st_base_idx+stIssueParam.issueWidth){
-        val st_uop = st_iss2rrd.io.deq.bits(i-st_base_idx)
+        val st_uop = st_iss2rrd(i-st_base_idx).io.deq.bits
         val rs1_addr= st_uop.prs1
         val rs2_addr= st_uop.prs2
         regfiles.io.readports(2*i).addr := rs1_addr
@@ -302,49 +324,68 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     }
 
 ///////////////////////////////////EX PIPE////////////////////////////////////
-    val int_rrd2ex = withReset(reset.asBool||commit_flush.valid) {
-        Module(new Queue(Vec(intIssueParam.issueWidth,new ExuReq), 1, pipe=true, flow=false)) }
+    val int_rrd2ex = Seq.fill(intIssueParam.issueWidth)(withReset(reset.asBool||commit_flush.valid) {
+        Module(new Queue(new ExuReq, 1, pipe=true, flow=false)) })
 
-    int_rrd2ex.suggestName("int_rrd2ex_pipe")
-    int_rrd2ex.io.enq.valid := int_iss2rrd.io.deq.valid
-    int_rrd2ex.io.enq.bits  := int_op
+    // int_rrd2ex.suggestName("int_rrd2ex_pipe")
+    int_rrd2ex.zipWithIndex.foreach { case (q, idx) => 
+        q.suggestName(s"int_rrd2ex_pipe_$idx") 
+    }
     for(i<- 0 until intIssueParam.issueWidth){
-        exe_units(i).io.req.bits := int_rrd2ex.io.deq.bits(i)
-        exe_units(i).io.req.valid:= int_rrd2ex.io.deq.valid
-        
+
+        int_rrd2ex(i).io.enq.valid  := int_iss2rrd(i).io.deq.valid
+        int_rrd2ex(i).io.enq.bits   := int_op(i)
+        dontTouch(exe_units(i).io.req.ready)
+        int_rrd2ex(i).io.deq.ready  := exe_units(i).io.req.ready
+        exe_units(i).io.req.bits    := int_rrd2ex(i).io.deq.bits
+        exe_units(i).io.req.valid   := int_rrd2ex(i).io.deq.valid
+        int_iss2rrd(i).io.deq.ready := int_rrd2ex(i).io.enq.ready
     }
-    int_rrd2ex.io.deq.ready := exe_units.map(_.io.req.ready).reduce(_&&_)
-
-    rob.io.br_info <> alujmp_unit.io.brupdate.bits////这里可能出现错误
 
 
+    rob.io.br_info <> alujmp_unit.io.brupdate////这里可能出现错误
 
 
-    val ld_rrd2ex = withReset(reset.asBool||commit_flush.valid) {
-        Module(new Queue(Vec(ldIssueParam.issueWidth,new LSUReq), 1, pipe=true, flow=false)) }
 
-    ld_rrd2ex.suggestName("ld_rrd2ex_pipe")
-    ld_rrd2ex.io.enq.valid := ld_iss2rrd.io.deq.valid
-    ld_rrd2ex.io.enq.bits  := ld_op
+
+    val ld_rrd2ex = Seq.fill(ldIssueParam.issueWidth)(withReset(reset.asBool||commit_flush.valid) {
+        Module(new Queue(new LSUReq, 1, pipe=true, flow=false)) })
+    ld_rrd2ex.zipWithIndex.foreach { case (q, idx) => 
+        q.suggestName(s"ld_rrd2ex_pipe_$idx") 
+    }
+
+    
+    
     for(i<- 0 until ldIssueParam.issueWidth){
-        io.lsu.ld_req(i).bits := ld_rrd2ex.io.deq.bits(i)
-        io.lsu.ld_req(i).valid:= ld_rrd2ex.io.deq.valid
+        ld_rrd2ex(i).io.enq.valid   := ld_iss2rrd(i).io.deq.valid
+        ld_rrd2ex(i).io.enq.bits    := ld_op(i)
+        io.lsu.ld_req(i).bits       := ld_rrd2ex(i).io.deq.bits
+        io.lsu.ld_req(i).valid      := ld_rrd2ex(i).io.deq.valid
+        ld_rrd2ex(i).io.deq.ready   := true.B
+        ld_iss2rrd(i).io.deq.ready := ld_rrd2ex(i).io.enq.ready
     }
-    ld_rrd2ex.io.deq.ready := true.B
+    
 
-    val st_rrd2ex = withReset(reset.asBool||commit_flush.valid) {
-        Module(new Queue(Vec(stIssueParam.issueWidth,new LSUReq), 1, pipe=true, flow=false)) }
-    st_rrd2ex.suggestName("st_rrd2ex_pipe")
-    st_rrd2ex.io.enq.valid := st_iss2rrd.io.deq.valid
-    st_rrd2ex.io.enq.bits  := st_op
-    io.lsu.st_req.bits := st_rrd2ex.io.deq.bits(0)
-    io.lsu.st_req.valid:= st_rrd2ex.io.deq.valid
+    val st_rrd2ex = Seq.fill(stIssueParam.issueWidth)(withReset(reset.asBool||commit_flush.valid) {
+        Module(new Queue(new LSUReq, 1, pipe=true, flow=false)) })
+    st_rrd2ex.zipWithIndex.foreach { case (q, idx) => 
+        q.suggestName(s"st_rrd2ex_pipe_$idx") 
+    }
+    for(i<- 0 until stIssueParam.issueWidth){
+        st_rrd2ex(i).io.enq.valid := st_iss2rrd(i).io.deq.valid
+        st_rrd2ex(i).io.enq.bits     := st_op(i)
+        st_rrd2ex(i).io.deq.ready := true.B
+        st_iss2rrd(i).io.deq.ready := st_rrd2ex(i).io.enq.ready
+    }
 
-    st_rrd2ex.io.deq.ready := true.B
+    io.lsu.st_req.bits := st_rrd2ex(0).io.deq.bits
+    io.lsu.st_req.valid:= st_rrd2ex(0).io.deq.valid
 
-    st_iss2rrd.io.deq.ready := st_rrd2ex.io.enq.ready
-    ld_iss2rrd.io.deq.ready := ld_rrd2ex.io.enq.ready
-    int_iss2rrd.io.deq.ready := int_rrd2ex.io.enq.ready
+    
+
+    
+    
+    
 ///////////////////////////////////WB RESP////////////////////////////////////
     val intNumWriteports = alujmp_unit.numIrfWritePorts + muldiv_unit.numIrfWritePorts
     val int_wb_resp  = VecInit(Seq(alujmp_unit.io.iresp,muldiv_unit.io.iresp).flatten)
@@ -358,6 +399,8 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
         regfiles.io.writeports(i).wen  := wbwen
         rob.io.wb_resp(i).bits := int_wb_resp(i).bits
         rob.io.wb_resp(i).valid := int_wb_resp(i).valid
+        busytable.io.wb_pdsts(i) := int_wb_resp(i).bits.uop.pdst
+        busytable.io.wb_valids(i):= int_wb_resp(i).valid
     }
 
 
@@ -372,6 +415,8 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
         regfiles.io.writeports(i).wen  := wbwen
         rob.io.wb_resp(i).bits := ld_wb_resp(i-intNumWriteports).bits
         rob.io.wb_resp(i).valid := ld_wb_resp(i-intNumWriteports).valid
+        busytable.io.wb_pdsts(i) := ld_wb_resp(i-intNumWriteports).bits.uop.pdst
+        busytable.io.wb_valids(i):= ld_wb_resp(i-intNumWriteports).valid
     }
     io.lsu.commit <> rob.io.commit.bits
     io.lsu.flush := commit_flush.valid
@@ -382,6 +427,10 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     rob.io.lsuexc.bits.uops := check_unorder.uop
     rob.io.lsuexc.valid  := check_unorder.redirect
 
+    if(hasDebug){
+        val commit_event = Module(new DifftestWrapper)
+        commit_event.io.commit <> rob.io.commit.bits
+    }
     override def toString: String =
     (GRVString("====Overall Core Params====") + "\n\n"
     + GRVString(

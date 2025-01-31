@@ -9,7 +9,9 @@ import $file.`rocket-chip`.dependencies.diplomacy.common
 import $file.`rocket-chip`.common
 import $file.difftest.common
 import $packages._
-val chiselVersion = "6.6.0"
+// val chiselVersion = "6.6.0"
+// val defaultScalaVersion = "2.13.14"
+val chiselVersion = "7.0.0-M2"
 val defaultScalaVersion = "2.13.14"
 val pwd = os.Path(sys.env("MILL_WORKSPACE_ROOT"))
 

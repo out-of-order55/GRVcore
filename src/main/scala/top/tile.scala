@@ -5,96 +5,32 @@ import grvcore.common._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
-import org.chipsalliance.cde.config._
+// import org.chipsalliance.cde.config._
 import freechips.rocketchip.util.DontTouch
-import difftest._
+import chisel3.util.circt.dpi._
+class DifftestWrapper (implicit p:Parameters)extends GRVModule{
 
+  val io = IO(new Bundle {
+    val commit = Input(new CommitMsg)
+  })
+  val commit_wen  = WireInit(UInt(8.W),VecInit((io.commit.commit_uops zip io.commit.valid map{ case(a,b)=>
+                      a.ldst_val&&b})).asUInt)
+  val commit_cnt= RegInit(0.U(32.W))
+
+  val commit_addr = WireInit(UInt(32.W),VecInit(io.commit.commit_uops.map(_.ldst)).asUInt)
+  val commit_num  = WireInit(UInt(8.W),PopCount(io.commit.valid))
+  val commit_data = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.wb_data).reverse))
+  val commit_pc   = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.pc).reverse))
+  val commit_str  =  Seq("commit_wen","commit_addr","commit_num","commit_data","commit_pc","commit_timeout")
+  commit_cnt := Mux(commit_wen=/=0.U,0.U,commit_cnt+1.U)
+  val commit_timeout = commit_cnt===200.U
+  val result      = RawClockedVoidFunctionCall("commit_event",Some(commit_str))(clock, true.B,commit_wen,commit_addr,commit_num,commit_data,commit_pc,commit_timeout)
+
+}
 class SimTop (implicit p:Parameters)extends Module{
-
-
-  // val difftest = DifftestModule(new DiffInstrCommit, delay = 1, dontCare = true)
-  // difftest.valid  := 1.U
-  // difftest.pc     := 1.U
-  // difftest.instr  := 1.U
-  // difftest.skip   := 1.U
-  // difftest.isRVC  := 1.U
-  // difftest.rfwen  := 1.U
-  // difftest.wdest  := 1.U
-  // difftest.wpdest := 1.U
-    // for differential testing
-    class CSRDiffWrapper extends Module {
-      val io = IO(new Bundle {
-        val csrState = Input(new DiffCSRState)
-        val archEvent = Input(new DiffArchEvent)
-      })
-
-      val difftest = DifftestModule(new DiffCSRState)
-      difftest := RegNext(io.csrState)
-      difftest.coreid := 0.U // TODO
-
-      val difftestArchEvent = DifftestModule(new DiffArchEvent)
-      difftestArchEvent := RegNext(RegNext(io.archEvent))
-      difftestArchEvent.coreid := 0.U // TODO
-    }
-
-    val difftestreg = DifftestModule(new DiffArchIntRegState)
-    difftestreg.coreid := 0.U // TODO
-    difftestreg.value  := VecInit.fill(32)(0.U)
-
-    val difftesttrap = DifftestModule(new DiffTrapEvent)
-    difftesttrap.coreid   := 0.U
-    difftesttrap.hasTrap  := 0.U
-    difftesttrap.code     := 0.U
-    difftesttrap.pc       := 0.U
-    difftesttrap.cycleCnt := 0.U
-    difftesttrap.instrCnt := 0.U
-    difftesttrap.hasWFI   := 0.U
-
-    val difftest_commit = DifftestModule(new DiffInstrCommit, delay = 1, dontCare = true)
-    difftest_commit.coreid := 0.U
-    difftest_commit.index  := 0.U
-    difftest_commit.valid  := 0.U
-    difftest_commit.pc     := 0.U
-    difftest_commit.instr  := 0.U
-    difftest_commit.skip   := 0.U
-    difftest_commit.isRVC  := 0.U
-    difftest_commit.rfwen  := 0.U
-    difftest_commit.fpwen  := 0.U
-    difftest_commit.wdest  := 0.U
-    difftest_commit.wpdest := 0.U
-    val diffWrapper = Module(new CSRDiffWrapper).io
-    diffWrapper := DontCare
-
-    val difftestcsr = diffWrapper.csrState
-    difftestcsr.privilegeMode := 0.U
-    difftestcsr.mstatus     := 0.U
-    difftestcsr.sstatus     := 0.U
-    difftestcsr.mepc        := 0.U
-    difftestcsr.sepc        := 0.U
-    difftestcsr.mtval       := 0.U
-    difftestcsr.stval       := 0.U
-    difftestcsr.mtvec       := 0.U
-    difftestcsr.stvec       := 0.U
-    difftestcsr.mcause      := 0.U
-    difftestcsr.scause      := 0.U
-    difftestcsr.satp        := 0.U
-    difftestcsr.mip         := 0.U
-    difftestcsr.mie         := 0.U
-    difftestcsr.mscratch    := 0.U
-    difftestcsr.sscratch    := 0.U
-    difftestcsr.mideleg     := 0.U
-    difftestcsr.medeleg     := 0.U
-
-    val difftestArchEvent = diffWrapper.archEvent
-    difftestArchEvent.valid         := 0.U
-    difftestArchEvent.interrupt     := 0.U
-    difftestArchEvent.exception     := 0.U
-    difftestArchEvent.exceptionPC   := 0.U
-    difftestArchEvent.exceptionInst := 0.U
-
-    val difftest = DifftestModule.finish("test")
-    // difftest.uart := DontCare
-
+  val tile = LazyModule(new TileTest)
+  val m = Module(tile.module)
+  m.dontTouchPorts()
 }
 class Tile(implicit p: Parameters) extends LazyModule{
     lazy val module = new TileImp(this)

@@ -34,6 +34,7 @@ static char *diff_so_file=NULL;
 static int difftest_port = 1234;
 FILE *log_fp = NULL;
 CPU_state cpu={};
+Commit  commit = {};
 uint64_t  InitTime=0;
 static uint64_t  start_time=0;
 static uint64_t  end_time=0;
@@ -337,10 +338,12 @@ void RESET(int time){
 void test_f(){
   UT_Init();
   #ifdef  CONFIG_WAVE_TRECE
+  Log("Open Trace");
   Verilated::traceEverOn(true);
   top->trace(tfp, 99);
   tfp->open("obj_dir/Vtop.vcd");
   #endif
+  Log("Start sim");
   top->clock = 0;
   top->reset = 1;
   RESET(12);

@@ -73,13 +73,7 @@ object AluRRdDecode extends RRdDecodeConstants
             BitPat(uopOR)    -> List(BJP_N ,  FN_OR  , dw_XPR, OP1_RS1 , OP2_RS2 , IS_X, REN_1, CSR.N),
             BitPat(uopXOR)   -> List(BJP_N ,  FN_XOR , dw_XPR, OP1_RS1 , OP2_RS2 , IS_X, REN_1, CSR.N),
             BitPat(uopSRA)   -> List(BJP_N ,  FN_SRA , dw_XPR, OP1_RS1 , OP2_RS2 , IS_X, REN_1, CSR.N),
-            BitPat(uopSRL)   -> List(BJP_N ,  FN_SR  , dw_XPR, OP1_RS1 , OP2_RS2 , IS_X, REN_1, CSR.N),
-            BitPat(uopBEQ)   -> List(BJP_EQ , FN_SUB , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
-            BitPat(uopBNE)   -> List(BJP_NE , FN_SUB , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
-            BitPat(uopBGE)   -> List(BJP_GE , FN_SLT , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
-            BitPat(uopBGEU)  -> List(BJP_GEU, FN_SLTU, dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
-            BitPat(uopBLT)   -> List(BJP_LT , FN_SLT , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
-            BitPat(uopBLTU)  -> List(BJP_LTU, FN_SLTU, dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N))
+            BitPat(uopSRL)   -> List(BJP_N ,  FN_SR  , dw_XPR, OP1_RS1 , OP2_RS2 , IS_X, REN_1, CSR.N))
 }
 
 object JmpRRdDecode extends RRdDecodeConstants
@@ -94,7 +88,13 @@ object JmpRRdDecode extends RRdDecodeConstants
                                 // |      |  |  |  |              |       |         |         |     |      |
             BitPat(uopJAL)   -> List(BJP_J ,  FN_ADD , dw_XPR, OP1_PC  , OP2_NEXT, IS_J, REN_1, CSR.N),
             BitPat(uopJALR)  -> List(BJP_JR,  FN_ADD , dw_XPR, OP1_PC  , OP2_NEXT, IS_I, REN_1, CSR.N),
-            BitPat(uopAUIPC) -> List(BJP_N ,  FN_ADD , dw_XPR, OP1_PC  , OP2_IMM , IS_U, REN_1, CSR.N))
+            BitPat(uopAUIPC) -> List(BJP_N ,  FN_ADD , dw_XPR, OP1_PC  , OP2_IMM , IS_U, REN_1, CSR.N),
+            BitPat(uopBEQ)   -> List(BJP_EQ , FN_SUB , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
+            BitPat(uopBNE)   -> List(BJP_NE , FN_SUB , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
+            BitPat(uopBGE)   -> List(BJP_GE , FN_SLT , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
+            BitPat(uopBGEU)  -> List(BJP_GEU, FN_SLTU, dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
+            BitPat(uopBLT)   -> List(BJP_LT , FN_SLT , dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N),
+            BitPat(uopBLTU)  -> List(BJP_LTU, FN_SLTU, dw_XPR, OP1_X   , OP2_X   , IS_B, REN_0, CSR.N))
 }
 
 /**

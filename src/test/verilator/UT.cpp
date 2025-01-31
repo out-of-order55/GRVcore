@@ -1,13 +1,14 @@
 #include <init.h>
 #include <GlobalVarible.h>
 #include <array>
-
-uint8_t sram[0x8000];
-char *UT_file = "/home/gg/ysyx-workbench/am-kernels/tests/cpu-tests/build/dummy-riscv32-ysyxsoc.bin";
+#include <svdpi.h>
+uint8_t sram[0x10000];
+char *UT_file = "./image/add-riscv32-nemu.bin";
 static long UT_load_img() {
     if (UT_file == NULL) {
-    printf("No image is given. Use the default build-in image.\n");
-    return 4096; // built-in image size
+        printf("No image is given. Use the default build-in image.\n");
+        // fflush(stdout);
+        return 4096; // built-in image size
     }
 
     FILE *fp = fopen(UT_file, "rb");
@@ -20,6 +21,7 @@ static long UT_load_img() {
 
     fseek(fp, 0, SEEK_SET);
     int ret = fread(sram, size, 1, fp);
+    // fflush(stdout);
     assert(ret == 1);
 
     fclose(fp);
@@ -66,15 +68,10 @@ void BR_init(){
     assert(i<=1000);
     fclose(file);
 }
+
 void UT_Init(){
     Log("UT init....");
-    uint32_t *start = (uint32_t *)sram;
-    // BR_init();
-    for(int i=0;i<0x8000/4;i++){
-        *start = i;
-        start++;
-    }
-    // UT_load_img();
+    UT_load_img();
     Log("UT init finish");
 }
 extern "C" void Br_check(int* s0_pc,int* pc,int* target,int* br_type,int* taken,int* rs1,
@@ -239,4 +236,33 @@ extern "C" void softRename(int reqs,int lrs1s,int lrs2s,int ldsts,int* old_pdsts
     *pdsts=res_pdst;
     *prs1s=res_prs1;
     *prs2s=res_prs2;
+}
+extern void commit_event();
+extern "C" void commit_event(
+char commit_wen, 
+int commit_addr, 
+char commit_num, 
+long long commit_data, 
+long long commit_pc,
+svBit commit_timeout
+){
+    commit.commit_wen  = commit_wen  ; 
+    commit.commit_addr = commit_addr ; 
+    commit.commit_num  = commit_num  ; 
+    commit.commit_data = commit_data ; 
+    commit.commit_pc   = commit_pc   ;
+    if(commit_timeout){
+        Log("Time Out");
+        #ifdef  CONFIG_WAVE_TRECE
+        tfp->close();
+        #endif
+        // nvboard_quit();
+        exit(0);
+    }
+    // printf("Commit Event Triggered:\n");
+    // printf("  wen   = %d\n", commit_wen);
+    // printf("  addr  = 0x%08x\n", commit_addr);
+    // printf("  num   = %d\n", commit_num);
+    // printf("  data  = 0x%016lx\n", commit_data);
+    // printf("  pc    = 0x%016lx\n", commit_pc);
 }

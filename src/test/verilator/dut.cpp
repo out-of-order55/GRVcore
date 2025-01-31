@@ -90,9 +90,26 @@ void difftest_pipeline(int pc,int finish) {
   }
 }
 bool time1=false;
-void super_difftest_step(vaddr_t pc1, vaddr_t pc2,int valid,int data1,int data2,int num){
+// void super_difftest_step(vaddr_t pc1, vaddr_t pc2,int valid,int data1,int data2,int num){
 
-} 
+// } 
+void difftest_nstep(int step){
+  int wen  = commit.commit_wen;
+  int waddr= commit.commit_addr; 
+  int wdata= commit.commit_data;
+  int pc   = commit.commit_pc;
+
+  for(int i=0;i<step;i++){
+    if(wen&&0x1){
+      cpu.gpr[waddr&0x1f] = wdata&0xffffffff;
+    }
+    difftest_step(pc&0xffffffff,0,true);
+    wen = wen>>1;
+    wdata = wdata>>32;
+    waddr = waddr>>5;
+    pc    = pc>>32;
+  }
+}
 void difftest_step(vaddr_t pc, vaddr_t npc,bool diff_mode) {
   // if(inst_num==1){
   //   printf("diff\n");

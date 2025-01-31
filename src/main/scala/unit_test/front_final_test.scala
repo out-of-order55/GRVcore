@@ -54,7 +54,7 @@ class FrontTest (implicit p:Parameters) extends LazyModule with HasFrontendParam
         front.io.cpu.redirect_val       := false.B
         front.io.cpu.get_pc             := DontCare
         front.io.cpu.flush_icache       := false.B
-        front.io.cpu.brupdate.cfi_mispredicted:=false.B
+        // front.io.cpu.brupdate.cfi_mispredicted:=false.B
 
     
     }

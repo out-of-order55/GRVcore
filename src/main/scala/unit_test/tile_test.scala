@@ -7,7 +7,7 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 class TileTest (implicit p:Parameters)extends LazyModule with HasDCacheParameters{
-    val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x0, 0x2000)))
+    val lsram = LazyModule(new AXI4SRAM(AddressSet.misaligned(0x00000000L, 0x010000)))
     val ltile = LazyModule(new Tile())
     lsram.node:=ltile.masterNode 
     override lazy val module = new Impl
