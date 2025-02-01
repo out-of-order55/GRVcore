@@ -27,6 +27,7 @@ extern void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nby
 void init_difftest(char *ref_so_file, long img_size, int port);
 char logbuf[128];
 uint8_t mem[CONFIG_MSIZE]={};
+uint8_t sram[0x10000]={};
 static char *img_file = NULL;
 static char *log_file = NULL;
 static char *elf_file=NULL;
@@ -40,7 +41,7 @@ static uint64_t  start_time=0;
 static uint64_t  end_time=0;
 static uint64_t  g_timer=0;
 static uint64_t g_nr_guest_inst=0;
-void UT_Init();
+long UT_Init();
 ////////////////////////////////////////////////////////
 
 #include <sys/time.h>
@@ -291,6 +292,7 @@ static long load_img() {
   fclose(fp);
   return size;
 }
+
 void npc_trap(uint32_t inst,uint32_t pc){
   int trap_code=1; 
   if(inst==0x00100073){
@@ -374,25 +376,16 @@ void init_npc(int argc, char** argv){
                                 "bad"))) "-pc-linux-gnu"
     ));
   #endif
-  
-  long img_size = load_img();
-  
+  long img_size=UT_Init();
   cpu.pc=RESET_VECTOR;
-  #ifdef FTRACE
-  load_elf();
-  #endif
   welcome();
   TimeInit();
-  #ifdef NVBOARD
-  nvboard_bind_all_pins(top.get());
-  nvboard_init();
-  #endif
-   // Trace 99 levels of hierarchy (or see below)
+
   #ifdef  CONFIG_WAVE_TRECE
   top->trace(tfp, 99);
   tfp->open("obj_dir/Vtop.vcd");
   #endif
-  top->clock = 0;
+  top->clock = 1;
   top->reset = 1;
   #ifdef  CONFIG_WAVE_TRECE
   tfp->dump(contextp->time());
@@ -445,20 +438,12 @@ void itrace_inst(int inst,int pc){
 
 //all trace 
 void TraceAndDiff(){
+  // Log("difftest pc %08x data %08x wen %08x waddr %08x\n",commit.commit_pc,commit.commit_data,commit.commit_wen,commit.commit_addr);
   if((top->reset==0)&&(top->clock)){
-    #ifdef  FTRACE
-    ftrace(inst_debug,pc_debug);
-    #endif
-    cpu.pc=pc_debug;
-    // if(valid_debug){
-    //   printf("pc %08x inst %08x\n",pc_debug,inst_debug);
-    // }
+    // Log("difftest pc %08x data %08x wen %08x waddr %08x\n",commit.commit_pc,commit.commit_data,commit.commit_wen,commit.commit_addr);
     #ifdef  CONFIG_DIFFTEST
-    difftest_step(pc_debug,pc_debug,valid_debug);
+    difftest_nstep(commit.commit_num);
     #endif
-    
-    npc_trap(inst_debug,pc_debug);
-    last_inst=inst_debug;
   }
 }
 
@@ -468,26 +453,10 @@ void npc_si(){
   itrace_inst(inst_debug,pc_debug);
   //printf("pc:%08x inst:%08x\n",pc_debug,inst_debug);
   #endif
+  
   TraceAndDiff();
-  #ifdef NVBOARD
-  nvboard_update();
-  #endif
-
   start_time=GetTime();
-  for(int i=0;i<2;i++){
-    contextp->timeInc(1);
-    top->clock = !top->clock;
-    top->eval();
-    #ifdef  CONFIG_WAVE_TRECE
-      if(cpu.pc<=0x30000000||cpu.pc>=0x3fffffff){
-        if(cpu.pc>=0xa00000060||cpu.pc<0xa00000000)
-        {
-          tfp->dump(contextp->time());
-        }
-      }    
-    
-    #endif   
-  }
+  CLOCK();
   //printf("pc:%08x inst:%08x\n",pc_debug,inst_debug);
   end_time=GetTime();
   g_nr_guest_inst++;

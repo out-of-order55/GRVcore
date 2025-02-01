@@ -179,7 +179,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
 ///////////////////////////    commit     //////////////////////////////
     for(i<- 0 until coreWidth){
         val commit_idx   = io.commit.commit_uops(i).stq_idx(log2Ceil(numSTQs)-1,0)
-        val commit_valid = io.commit.valid(i)
+        val commit_valid = io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XWR
         when(commit_valid){
             stq(commit_idx).flag.commited := true.B
         }

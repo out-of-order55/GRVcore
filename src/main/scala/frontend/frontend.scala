@@ -73,14 +73,15 @@ class FrontEnd(implicit p: Parameters) extends LazyModule{
     lazy val module = new FrontendImp(this)
     val icache = LazyModule(new ICacheWrapper)
     val masterNode = icache.masterNode
-    
+
     
 }
 class FrontendImp(val outer: FrontEnd)(implicit p: Parameters) extends LazyModuleImp(outer) 
 with HasFrontendParameters with GRVOpConstants with DontTouch{
     val io = IO(new FrontBundle)
 
-
+    val (f_master, _) = outer.masterNode.out(0)
+    dontTouch(f_master)
     def nextPC(addr:UInt) = {
         bankAlign(addr) + blockBytes.U
     }

@@ -97,6 +97,12 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     def GetPtrVal(ptr:UInt):UInt={
         return ptr(RobSz-1,0)
     }
+    def isOlder(idx1:UInt,idx2:UInt):Bool={
+        GetPtrMask(idx1)===GetPtrMask(idx2)&&
+        GetPtrVal(idx1)<GetPtrVal(idx2)||
+        GetPtrMask(idx1)=/=GetPtrMask(idx2)&&
+        GetPtrVal(idx1)>GetPtrVal(idx2)
+    }
     val rob_entry   = RegInit(VecInit.fill(coreWidth)(VecInit.fill(ROBEntry/coreWidth)(0.U.asTypeOf(new ROBEntryBundle))))
     
     val rob_enq_val = GetPtrVal(rob_enq_ptr)
@@ -106,21 +112,22 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     //enq
     val enqInfo     = WireInit(io.enq)
     val br_info     = WireInit(io.br_info)
-    val flush       = WireInit(br_info.bits.cfi_mispredicted&&br_info.valid)
+    val flush       = WireInit(false.B)
     val is_exc_inst_commit = WireInit(false.B)
     val br_update   = RegInit(0.U.asTypeOf(Valid(new BrUpdateInfo)))
 
     val deq_vld_mask    = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=> i(rob_deq_val).valid}).asUInt))
-    val deq_finish_mask = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish}).asUInt))
+    val deq_finish_mask = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish&&i(rob_deq_val).valid}).asUInt))
     /* 
     可以提交的情况：
     1.无异常，此时只要finfish的个数等于vld的个数，就说明可以提交
     2.发生异常，此时只要该异常指令变为最旧的指令，此时就可以进行提交
      */
-    val is_commit_flush = WireInit(MaskLower(VecInit(rob_entry.map{i=>i(rob_deq_val).finish&&i(rob_deq_val).flush}).asUInt))
+    val is_commit_flush = WireInit(MaskLower(VecInit(rob_entry.map{i=>i(rob_deq_val).finish&&i(rob_deq_val).flush&&i(rob_deq_val).valid}).asUInt))
     val is_exc_oldest   = Wire(Bool())
     is_exc_oldest := (is_commit_flush=/=0.U)&&(((is_commit_flush)&(deq_finish_mask))===is_commit_flush)
     dontTouch(is_exc_oldest)
+    dontTouch(deq_finish_mask)
     val can_commit      = ((((deq_vld_mask)===(deq_finish_mask)))||is_exc_oldest)&&(deq_vld_mask=/=0.U)
 
     
@@ -137,6 +144,10 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     io.enq_idxs:= DontCare
     io.flush := DontCare
     io.flush.valid := false.B
+    
+    val is_flush_older = (!br_update.valid)||
+                        (br_update.valid&&isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx)) 
+    flush := br_info.bits.cfi_mispredicted&&br_info.valid&&is_flush_older
     dontTouch(do_enq)
     dontTouch(rob_deq_val)
     for(i <- 0 until coreWidth){
@@ -156,52 +167,75 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
             rob_entry(i)(rob_deq_val).finish := false.B
             rob_entry(i)(rob_deq_val).flush  := false.B
             io.commit.valid := true.B
-            io.commit.bits.valid(i) := rob_entry(i)(rob_deq_val).valid
+            io.commit.bits.valid(i) := Mux(is_exc_oldest,is_commit_flush(i),rob_entry(i)(rob_deq_val).valid)
             io.commit.bits.commit_uops(i):=rob_entry(i)(rob_deq_val).uop
             //由于采用提交处理各种异常，所以commit的信号内包含的信号flush不用再次包含
         }
-        /* 
-        exc
-        此时处理来自执行单元的异常，并且更新uop，以便之后br_update
-         */
-        val br_miss_bank = GetBankIdx((br_info.bits.uop.rob_idx))
-        val br_miss_row  = GetRowIdx((br_info.bits.uop.rob_idx))
-        when(flush){
-            rob_entry(br_miss_bank)(br_miss_row).flush := true.B
-            // rob_entry(br_miss_bank)(br_miss_row).uop   := br_info.bits.uop
+
+    }
+    /* 
+    exc
+    此时处理来自执行单元的异常，并且更新uop，以便之后br_update
+        */
+    val br_miss_bank = GetBankIdx((br_info.bits.uop.rob_idx))
+    val br_miss_row  = GetRowIdx((br_info.bits.uop.rob_idx))
+    when(flush){
+        for(i <- 0 until coreWidth){
+            rob_entry(i)(br_miss_row).flush := Mux(br_miss_bank===i.U,true.B,false.B)
         }
+        
+        // rob_entry(br_miss_bank)(br_miss_row).uop   := br_info.bits.uop
     }
     for(i<-0 until numWakeupPorts){
         val wb_rob_bank = GetBankIdx(io.wb_resp(i).bits.uop.rob_idx)
         val wb_rob_idx  = GetRowIdx(io.wb_resp(i).bits.uop.rob_idx)
         when(io.wb_resp(i).valid){
             rob_entry(wb_rob_bank)(wb_rob_idx).finish := true.B
+            if(hasDebug){
+                rob_entry(wb_rob_bank)(wb_rob_idx).uop.wb_data := io.wb_resp(i).bits.wb_data
+            }
         }
     }
 
     //指针更新逻辑
-    when(do_enq.reduce(_||_)){
+    when(is_exc_oldest){
+        rob_enq_ptr := 0.U
+    }
+    .elsewhen(do_enq.reduce(_||_)){
         rob_enq_ptr := rob_enq_ptr + 1.U
     }
-    when(can_commit){
+    when(is_exc_oldest){
+        rob_deq_ptr := 0.U
+    }.elsewhen(can_commit){
         rob_deq_ptr := rob_deq_ptr + 1.U
     }
     //只有在提交阶段才会更新br——update，并且只有这时候才会去处理update信息，
     when(is_exc_oldest){
         br_update.valid := false.B
     }
-    .elsewhen(rob_state===s_normal){
+    .elsewhen(flush){
         br_update := br_info
     }
+
     io.br_update.bits := br_update.bits
     io.br_update.valid:= is_exc_oldest&&(br_update.bits.uop.fu_code===FU_JMP&&br_update.bits.uop.uopc=/=uopAUIPC)
     //exc handle
-
+    // exc
+    when(is_exc_oldest){
+        for(i <- 0 until coreWidth){
+            for(j<- 0 until ROBEntry/coreWidth){
+                rob_entry(i)(j).valid := false.B
+                rob_entry(i)(j).flush := false.B
+                rob_entry(i)(j).finish := false.B
+            }
+        }
+    }
     when(is_exc_oldest){
         io.flush.valid := true.B
         io.flush.bits.cause := 0.U
         io.flush.bits.flush_typ := 0.U
         io.flush.bits.epc   := br_update.bits.target
+
     }
     dontTouch(io.flush)
     //两个周期的处理时间，

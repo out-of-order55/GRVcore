@@ -423,7 +423,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
     val io = IO(new DCacheBundle)
 	dontTouch(io)
     val (master,_) = outer.masterNode.out(0)
-
+	dontTouch(master)
     class Meta extends Bundle{
         val dirty = Bool()
     }

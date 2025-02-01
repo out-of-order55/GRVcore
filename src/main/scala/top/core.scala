@@ -45,6 +45,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val muldiv_unit      = Module(new ALUExuUnit(false,false,true,true))
 
 
+    val numDispatchWidth   = ldIssueParam.dispatchWidth+stIssueParam.dispatchWidth+intIssueParam.dispatchWidth
     val numIntIssueWakeupPorts = alujmp_unit.numIrfWritePorts + muldiv_unit.numIrfWritePorts + ldIssueParam.issueWidth// 4 for alu 2 for lsu
     val busytable = Module(new BusyTable(numIntIssueWakeupPorts))
     val dispatcher       = Module(new ComplexDispatcher)
@@ -66,7 +67,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val numIrfWritePorts = numIntIssueWakeupPorts
 
     val regfiles         = Module(new RegFile(numIrfReadPorts,numIrfWritePorts,Seq.fill(numIntIssueWakeupPorts) {true}))
-    val rob              = Module(new ROB(numIntIssueWakeupPorts))
+    val rob              = Module(new ROB(numIntIssueWakeupPorts+1))
 
     val commit_flush     = WireInit(rob.io.flush)
     io.ifu := DontCare
@@ -420,6 +421,9 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     }
     io.lsu.commit <> rob.io.commit.bits
     io.lsu.flush := commit_flush.valid
+    val st_wb_resp = io.lsu.st_wb_resp
+    rob.io.wb_resp(intNumWriteports+memNumWriteports).bits  := st_wb_resp.bits
+    rob.io.wb_resp(intNumWriteports+memNumWriteports).valid := st_wb_resp.valid
     
 ///////////////////////////////////EXCEPTION////////////////////////////////////
     val check_unorder = WireInit(io.lsu.check_resp)

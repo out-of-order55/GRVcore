@@ -10,6 +10,6 @@ uint32_t last_inst;
 int main(int argc, char** argv) {
   Verilated::commandArgs(argc, argv);
   setvbuf(stdout, NULL, _IONBF, 0);
-  test_f();
+  init_npc(argc,argv);
 
 }

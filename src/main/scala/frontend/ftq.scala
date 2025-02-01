@@ -203,8 +203,8 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 /////////////////////backend get pc///////////////
     val get_ftq_idx= io.get_ftq_pc.ftq_idx
 ///如果issue指令为br，则在issue读，ex阶段出结果
-    io.get_ftq_pc.entry  := RegNext(brInfo(get_ftq_idx))
-    io.get_ftq_pc.pc     := RegNext(pcs(get_ftq_idx))
-    io.get_ftq_pc.next_pc:= RegNext(pcs(get_ftq_idx+1.U))
-    io.get_ftq_pc.next_pc_val:=RegNext(get_ftq_idx+1.U=/=enq_ptr||do_enq)
+    io.get_ftq_pc.entry  := (brInfo(get_ftq_idx))
+    io.get_ftq_pc.pc     := (pcs(get_ftq_idx))
+    io.get_ftq_pc.next_pc:= (pcs(get_ftq_idx+1.U))
+    io.get_ftq_pc.next_pc_val:=(get_ftq_idx+1.U=/=enq_ptr||do_enq)
 }

@@ -52,9 +52,10 @@ val needsFcsr: Boolean = false)
     io.resp.valid := false.B
     io.resp.bits.uop := uop
     io.resp.bits.wb_data:= DontCare
+    val uop_pc = WireInit(0.U(XLEN.W))
     if (isJmpUnit) {
         val block_pc = AlignPCToBoundary(io.get_ftq_pc.pc, ICacheParam.blockBytes)
-        val uop_pc = (block_pc | uop.pc_off)
+        uop_pc:= (block_pc | uop.pc_off)
 
         op1_data := Mux(uop.ctrl.op1_sel.asUInt === OP1_RS1 , io.req.bits.rs1_data,
                 Mux(uop.ctrl.op1_sel.asUInt === OP1_PC  , Sext(uop_pc, XLEN),
@@ -150,7 +151,7 @@ extends FunctionalUnit(
     val target_offset = imm_xprlen(20,0).asSInt
 
 
-    val target_base = op1_data.asSInt
+    val target_base = Mux(uop.ctrl.br_type===BJP_J||uop.ctrl.br_type===BJP_JR,op1_data.asSInt,uop_pc.asSInt)
     val target_XLEN = Wire(UInt(XLEN.W))
     target_XLEN := (target_base + target_offset).asUInt
     

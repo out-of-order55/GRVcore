@@ -59,6 +59,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val s2_valid = RegNext(s1_valid&&(!io.flush))
     val s2_waddr = RegNext(s1_waddr)
     val s2_uop   = RegNext(s1_uop)
+    dontTouch(s2_valid)
+    dontTouch(s2_uop)
     val dcache_replayMsg = WireInit(0.U.asTypeOf(new LSUReplay))
     s0_replayMsg.replay := s0_replay
     s0_replayMsg.uop    := s0_uop

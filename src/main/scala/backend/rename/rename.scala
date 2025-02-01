@@ -36,9 +36,9 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
     uops := io.dec_uops.bits
 
     val lrs1      = WireInit(VecInit(io.dec_uops.bits.map(_.lrs1)))
-    val lrs1_val  = WireInit(VecInit(io.dec_uops.bits.map(_.lrs1_rtype=/=RT_X)))
+    val lrs1_val  = WireInit(VecInit(io.dec_uops.bits.map{i=>i.lrs1_rtype=/=RT_X&&i.lrs1=/=0.U}))
     val lrs2      = WireInit(VecInit(io.dec_uops.bits.map(_.lrs2)))
-    val lrs2_val  = WireInit(VecInit(io.dec_uops.bits.map(_.lrs2_rtype=/=RT_X)))
+    val lrs2_val  = WireInit(VecInit(io.dec_uops.bits.map{i=>i.lrs2_rtype=/=RT_X&&i.lrs2=/=0.U}))
     val ldst      = WireInit(VecInit(io.dec_uops.bits.map(_.ldst)))
     val ldst_val  = WireInit(VecInit(io.dec_uops.bits.map(_.ldst_val)))
     //read
@@ -52,9 +52,9 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
     dontTouch(dec_fire)
     for(i <- 0 until coreWidth){
         //req
-        rat.io.reqs(i).lrs1          := lrs1(i)
-        rat.io.reqs(i).lrs2          := lrs2(i)
-        rat.io.reqs(i).ldst          := ldst(i)
+        rat.io.reqs(i).lrs1          := Mux(lrs1_val(i),lrs1(i),0.U)
+        rat.io.reqs(i).lrs2          := Mux(lrs2_val(i),lrs2(i),0.U)
+        rat.io.reqs(i).ldst          := Mux(ldst_val(i),ldst(i),0.U)
 
         freelist.io.reqs(i)          := ldst_val(i)&&dec_fire
         
@@ -77,7 +77,7 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
         rat_write_dst(i).bits.ldst:= io.commit.commit_uops(i).ldst
         rat_write_dst(i).bits.pdst:= io.commit.commit_uops(i).pdst
         freelist_write_dst(i).valid := io.commit.valid(i)
-        freelist_write_dst(i).bits  := io.commit.commit_uops(i).pdst
+        freelist_write_dst(i).bits  := io.commit.commit_uops(i).old_pdst
     }
     rat.io.commitReqs := rat_write_dst
     freelist.io.dealloc_pregs := freelist_write_dst

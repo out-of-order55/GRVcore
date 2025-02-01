@@ -61,7 +61,7 @@ class FreeList(implicit p: Parameters) extends GRVModule
 	for (w <- 0 until coreWidth) {
 		val can_sel = sels(w).orR
 		sel_valid(w) := io.reqs(w) && can_sel
-		io.alloc_pregs(w).bits  := OHToUInt(sels(w))
+		io.alloc_pregs(w).bits  := Mux(sel_valid(w),OHToUInt(sels(w)),0.U)
 		io.alloc_pregs(w).valid := sel_valid(w)
 	}
 

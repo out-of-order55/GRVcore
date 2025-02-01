@@ -106,13 +106,17 @@ class RAT(implicit p: Parameters) extends GRVModule{
     }
     // val 
     for(i <- 0 until coreWidth){
+        
         io.resps(i).prs1 := (0 until i).foldLeft(spec_rat(io.reqs(i).lrs1)) ((p,k) =>
             Mux(io.remapReqs(k).valid && io.remapReqs(k).bits.ldst === io.reqs(i).lrs1, io.remapReqs(k).bits.pdst, p))
+
         io.resps(i).prs2 := (0 until i).foldLeft(spec_rat(io.reqs(i).lrs2)) ((p,k) =>
             Mux(io.remapReqs(k).valid && io.remapReqs(k).bits.ldst === io.reqs(i).lrs2, io.remapReqs(k).bits.pdst, p))
+
         io.resps(i).old_pdst := (0 until i).foldLeft(spec_rat(io.reqs(i).ldst)) ((p,k) =>
             Mux(io.remapReqs(k).valid && io.remapReqs(k).bits.ldst === io.reqs(i).ldst, io.remapReqs(k).bits.pdst, p))
-    }
+
+        }
     io.redirect_freelist := comm_list&(~commit_listmask)
 
 }

@@ -101,6 +101,7 @@ class ICacheWrapper(implicit p: Parameters) extends LazyModule with HasICachePar
     lazy val module = new Impl
     class Impl extends LazyModuleImp(this){
         val (master, _) = masterNode.out(0)
+		dontTouch(master)
         val icache = Module(new ICache)
         val io     = IO(new ICacheBundle)
         io <> icache.io
@@ -146,7 +147,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	val r  = Reg(new AXI4BundleR(CPUAXI4BundleParameters()))
 	ar <> imaster.ar.bits
 
-
+	dontTouch(imaster.ar.bits.id)
 	val end 		= Reg(Bool())
 	val rcnt 		= Reg(UInt(log2Ceil(2*blockBytes/4).W))
 	val rready 		= Reg(Bool())
@@ -154,6 +155,7 @@ class MissUnit(implicit p:Parameters) extends  GRVModule with HasICacheParameter
 	imaster.r.ready := rready
 	imaster.ar.valid:= arvalid
 	//生成axi信号，默认一笔传输的数据大小为4字节，突发长度为blk_size或者2倍的blk
+	ar.id    := 0.U
 	when(state===s_normal&state_n===s_req){
 		ar.id    := 1.U
 		ar.addr  := missmsg.addr//Mux(missmsg0.miss,,missmsg1.addr)

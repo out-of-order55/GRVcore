@@ -23,7 +23,7 @@ class DifftestWrapper (implicit p:Parameters)extends GRVModule{
   val commit_pc   = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.pc).reverse))
   val commit_str  =  Seq("commit_wen","commit_addr","commit_num","commit_data","commit_pc","commit_timeout")
   commit_cnt := Mux(commit_wen=/=0.U,0.U,commit_cnt+1.U)
-  val commit_timeout = commit_cnt===200.U
+  val commit_timeout = commit_cnt===2000.U
   val result      = RawClockedVoidFunctionCall("commit_event",Some(commit_str))(clock, true.B,commit_wen,commit_addr,commit_num,commit_data,commit_pc,commit_timeout)
 
 }
@@ -36,10 +36,11 @@ class Tile(implicit p: Parameters) extends LazyModule{
     lazy val module = new TileImp(this)
     // val icache = LazyModule(new ICacheWrapper)
     // val masterNode = icache.masterNode
-    val xbar = AXI4Xbar()
+    val xbar = AXI4Xbar(maxFlightPerId=1)
     val lfrontend = LazyModule(new FrontEnd)
     val llsu      = LazyModule(new LSU)
     xbar := lfrontend.masterNode
+    // dontTouch(lfrontend.masterNode.)
     xbar := llsu.masterNode
     val masterNode = AXI4IdentityNode()
     masterNode :=* xbar
@@ -50,7 +51,8 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     val frontend = outer.lfrontend.module
     val lsu      = outer.llsu.module
     val core     = Module(new GRVCore)
-
+    val (f_master, _) = outer.lfrontend.masterNode.out(0)
+    dontTouch(f_master)
     core.io.lsu <> lsu.io
     core.io.ifu <>frontend.io.cpu
     override def toString: String =

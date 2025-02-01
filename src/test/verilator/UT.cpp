@@ -2,7 +2,7 @@
 #include <GlobalVarible.h>
 #include <array>
 #include <svdpi.h>
-uint8_t sram[0x10000];
+
 char *UT_file = "./image/add-riscv32-nemu.bin";
 static long UT_load_img() {
     if (UT_file == NULL) {
@@ -69,10 +69,11 @@ void BR_init(){
     fclose(file);
 }
 
-void UT_Init(){
+long UT_Init(){
     Log("UT init....");
-    UT_load_img();
+    long size = UT_load_img();
     Log("UT init finish");
+    return size;
 }
 extern "C" void Br_check(int* s0_pc,int* pc,int* target,int* br_type,int* taken,int* rs1,
                 int* rd,int valid3,int valid0,int s0_ptr,int s3_ptr){

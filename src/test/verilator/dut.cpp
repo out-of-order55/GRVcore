@@ -18,7 +18,13 @@ void init_difftest(char *ref_so_file, long img_size, int port) {
   assert(ref_so_file != NULL);
 
   void *handle;
+  Log("Difftest Location%s",ref_so_file);
   handle = dlopen(ref_so_file, RTLD_LAZY);
+  
+  if (!handle) {
+      fprintf(stderr, "dlopen failed: %s\n", dlerror());
+      exit(1);
+  }
   assert(handle);
 
   // ref_difftest_memcpy = dlsym(handle, "difftest_memcpy");
@@ -46,8 +52,8 @@ void init_difftest(char *ref_so_file, long img_size, int port) {
       "This will help you a lot for debugging, but also significantly reduce the performance. "
       "If it is not necessary, you can turn it off in menuconfig.", ref_so_file);
   ref_difftest_init(port);
-  uint8_t *ptr8 = reinterpret_cast<uint8_t*>(mem);
-  ref_difftest_memcpy(RESET_VECTOR, ptr8,CONFIG_MSIZE, DIFFTEST_TO_REF);
+  uint8_t *ptr8 = reinterpret_cast<uint8_t*>(sram);
+  ref_difftest_memcpy(RESET_VECTOR, ptr8,img_size, DIFFTEST_TO_REF);
   ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
 }
 bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
@@ -96,18 +102,22 @@ bool time1=false;
 void difftest_nstep(int step){
   int wen  = commit.commit_wen;
   int waddr= commit.commit_addr; 
-  int wdata= commit.commit_data;
-  int pc   = commit.commit_pc;
-
+  long wdata= commit.commit_data;
+  long pc   = commit.commit_pc;
+  
   for(int i=0;i<step;i++){
     if(wen&&0x1){
+      // Log("difftest pc %08x data %08x num %08x waddr %08x",pc,wdata,commit.commit_num,waddr);
       cpu.gpr[waddr&0x1f] = wdata&0xffffffff;
+      
     }
     difftest_step(pc&0xffffffff,0,true);
+    
     wen = wen>>1;
     wdata = wdata>>32;
     waddr = waddr>>5;
     pc    = pc>>32;
+    cpu.pc = pc;
   }
 }
 void difftest_step(vaddr_t pc, vaddr_t npc,bool diff_mode) {
@@ -118,32 +128,9 @@ void difftest_step(vaddr_t pc, vaddr_t npc,bool diff_mode) {
   if(diff_mode==false){
     return ;
   }
-  else if((inst_num)){
-    if((diff_amend==true)){
-      ref_difftest_exec(inst_num);
-      ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
-      diff_amend=false;
-      diff_stage1=true;
-      //printf("diffref%08x dut %08x\n",ref_r.pc,cpu.pc);
-    }
-    else{
-      if(diff_stage1==true){
-        ref_difftest_exec(inst_num);
-        cpu.pc+=4;
-        ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
-        //ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
-        //checkregs(&ref_r, pc);
-        
-        diff_stage1=false;
-      }
-      else{
-        
-        ref_difftest_exec(inst_num);
-        ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
-        
-        checkregs(&ref_r, pc);
-      }
-    }
-
+  else {
+    ref_difftest_exec(1);
+    ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
+    checkregs(&ref_r, pc);
   }
 }
