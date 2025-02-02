@@ -8,7 +8,7 @@ typedef struct {
 typedef struct {
   char      commit_wen  ;
   int       commit_addr ; 
-  char      commit_num  ;
+  char      commit_valid  ;
   long long commit_data ; 
   long long commit_pc   ;
 }Commit;

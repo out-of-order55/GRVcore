@@ -60,6 +60,8 @@ GRVCore
 
 2024/2/1：今天主要修复了rob以及rename的若干个bug，目前AXI_XBAR存在问题：lsu和icache先后访存，会导致总线卡死，怀疑为输入的axi信号不全
 
+2024/2/1：今天完成了axi'_xbar的编写,将int 的issuewidth设置为了3，今天的bug集中在rename阶段，主要在修复freelist（由于bug导致freelist空)
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

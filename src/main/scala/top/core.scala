@@ -41,12 +41,13 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val decode_units = Seq.fill(coreWidth)(Module(new DecodeUnit))
     val rename_stage = Module(new RenameStage)
     val alujmp_unit      = Module(new ALUExuUnit(true,true,false,false))
+    val alu_unit      = Module(new ALUExuUnit(true,false,false,false))
     // val alu_unit         = Module(new ALUExuUnit(true,false,false,false))
     val muldiv_unit      = Module(new ALUExuUnit(false,false,true,true))
 
 
     val numDispatchWidth   = ldIssueParam.dispatchWidth+stIssueParam.dispatchWidth+intIssueParam.dispatchWidth
-    val numIntIssueWakeupPorts = alujmp_unit.numIrfWritePorts + muldiv_unit.numIrfWritePorts + ldIssueParam.issueWidth// 4 for alu 2 for lsu
+    val numIntIssueWakeupPorts = alujmp_unit.numIrfWritePorts +alu_unit.numIrfWritePorts+ muldiv_unit.numIrfWritePorts + ldIssueParam.issueWidth// 4 for alu 2 for lsu
     val busytable = Module(new BusyTable(numIntIssueWakeupPorts))
     val dispatcher       = Module(new ComplexDispatcher)
     dispatcher.io := DontCare
@@ -60,7 +61,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
 
     val issue_units      = Seq(int_iss_unit,ld_iss_unit,st_iss_unit)
     def iss_length = issue_units.length
-    val exe_units        = Seq(alujmp_unit,muldiv_unit)
+    val exe_units        = Seq(alujmp_unit,alu_unit,muldiv_unit)
 
 
     val numIrfReadPorts  =  2*(intIssueParam.issueWidth+ldIssueParam.issueWidth + stIssueParam.issueWidth)
@@ -145,13 +146,13 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val int_iss_idx = issueParams.indexWhere(_.iqType == IQT_INT.litValue) 
     val alu_uop = WireInit(dispatcher.io.dis_uops(int_iss_idx))
     val rob_idx= WireInit(rob.io.enq_idxs)
-    val int_fu_type = Seq(alujmp_unit.io.fu_types,muldiv_unit.io.fu_types)
-    for(j <- 0 until intIssueParam.issueWidth){
-        alu_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
-        int_iss_unit.io.fu_using(j) := int_fu_type(j)
-        int_iss_unit.io.dis_uops(j).valid := alu_uop(j).valid
-        int_iss_unit.io.dis_uops(j).bits  := alu_uop(j).bits
-        dispatcher.io.dis_uops(ld_iss_idx)(j).ready := int_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)
+    val int_fu_type = Seq(alujmp_unit.io.fu_types,alu_unit.io.fu_types,muldiv_unit.io.fu_types)
+    for(i <- 0 until intIssueParam.dispatchWidth){
+        alu_uop(i).bits.rob_idx := Mux(rob_idx(i).valid,rob_idx(i).bits,0.U)
+        
+        int_iss_unit.io.dis_uops(i).valid := alu_uop(i).valid
+        int_iss_unit.io.dis_uops(i).bits  := alu_uop(i).bits
+        dispatcher.io.dis_uops(int_iss_idx)(i).ready := int_iss_unit.io.dis_uops(i).ready&&rob_enq_ready(i)
 
     }
     
@@ -196,8 +197,8 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     // io.lsu.dis(0).enq <> dispatcher.io.dis_uops(st_iss_idx)
 
 ///////////////////////////////////ISSUE PIPE///////////////////////////////
-    val wb_resp  = VecInit(Seq(alujmp_unit.io.iresp.map(_.bits),muldiv_unit.io.iresp.map(_.bits),io.lsu.ld_wb_resp.map(_.bits)).flatten)
-    val wb_resp_valid  = VecInit(Seq(alujmp_unit.io.iresp.map(_.valid),muldiv_unit.io.iresp.map(_.valid),io.lsu.ld_wb_resp.map(_.valid)).flatten)
+    val wb_resp  = VecInit(Seq(alujmp_unit.io.iresp.map(_.bits),alu_unit.io.iresp.map(_.bits),muldiv_unit.io.iresp.map(_.bits),io.lsu.ld_wb_resp.map(_.bits)).flatten)
+    val wb_resp_valid  = VecInit(Seq(alujmp_unit.io.iresp.map(_.valid),alu_unit.io.iresp.map(_.valid),muldiv_unit.io.iresp.map(_.valid),io.lsu.ld_wb_resp.map(_.valid)).flatten)
     dontTouch(wb_resp)
     dontTouch(wb_resp_valid)
     dontTouch(alujmp_unit.io.iresp)
@@ -208,15 +209,17 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     }
 
 
-    val alu_ex_decoder =Module(new RegisterReadDecode(alujmp_unit.supportedFuncUnits))
+    val alujmp_ex_decoder =Module(new RegisterReadDecode(alujmp_unit.supportedFuncUnits))
+    val alu_ex_decoder =Module(new RegisterReadDecode(alu_unit.supportedFuncUnits))
     val muld_ex_decoder= Module(new RegisterReadDecode(muldiv_unit.supportedFuncUnits))
     //  <> int_iss_unit.io.issue_uops
     //这里如果有一个有效的uop，就会全部有效，这里需要细分化
-    val int_ex_decoder = Seq(alu_ex_decoder,muld_ex_decoder)
+    val int_ex_decoder = Seq(alujmp_ex_decoder,alu_ex_decoder,muld_ex_decoder)
     
     for(i <- 0 until intIssueParam.issueWidth){
         val int_iss_uop = WireInit(int_iss_unit.io.issue_uops(i))
         dontTouch(int_ex_decoder(i).io.iss_valid)
+        int_iss_unit.io.fu_using(i) := int_fu_type(i)
         int_ex_decoder(i).io.iss_valid      := int_iss_uop.valid
         int_ex_decoder(i).io.iss_uop        := int_iss_uop.bits
         int_iss2rrd(i).io.enq.valid         := int_iss_unit.io.issue_uops(i).valid
@@ -388,8 +391,8 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     
     
 ///////////////////////////////////WB RESP////////////////////////////////////
-    val intNumWriteports = alujmp_unit.numIrfWritePorts + muldiv_unit.numIrfWritePorts
-    val int_wb_resp  = VecInit(Seq(alujmp_unit.io.iresp,muldiv_unit.io.iresp).flatten)
+    val intNumWriteports = alujmp_unit.numIrfWritePorts +alu_unit.numIrfWritePorts+ muldiv_unit.numIrfWritePorts
+    val int_wb_resp  = VecInit(Seq(alujmp_unit.io.iresp,alu_unit.io.iresp,muldiv_unit.io.iresp).flatten)
     for(i <- 0 until intNumWriteports){
         val wbpdst = int_wb_resp(i).bits.uop.pdst 
         val wbwen  = int_wb_resp(i).valid && int_wb_resp(i).bits.uop.ldst_val

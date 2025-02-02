@@ -164,6 +164,7 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
     io.dis_uops.foreach{i=>
         i.ready := (!full)&(!io.flush)
     }
+    dontTouch(full)
     val in_sels = SelectFirstN(entry_can_alloc.asUInt,dispatchWidth)
     val iss_sels= SelectFirstN(entry_can_iss.asUInt,issueWidth)
     // io.dis_uops

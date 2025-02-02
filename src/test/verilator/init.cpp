@@ -442,7 +442,7 @@ void TraceAndDiff(){
   if((top->reset==0)&&(top->clock)){
     // Log("difftest pc %08x data %08x wen %08x waddr %08x\n",commit.commit_pc,commit.commit_data,commit.commit_wen,commit.commit_addr);
     #ifdef  CONFIG_DIFFTEST
-    difftest_nstep(commit.commit_num);
+    difftest_nstep(commit.commit_valid);
     #endif
   }
 }

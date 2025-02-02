@@ -15,16 +15,17 @@ class DifftestWrapper (implicit p:Parameters)extends GRVModule{
   })
   val commit_wen  = WireInit(UInt(8.W),VecInit((io.commit.commit_uops zip io.commit.valid map{ case(a,b)=>
                       a.ldst_val&&b})).asUInt)
+  dontTouch(commit_wen)
   val commit_cnt= RegInit(0.U(32.W))
 
   val commit_addr = WireInit(UInt(32.W),VecInit(io.commit.commit_uops.map(_.ldst)).asUInt)
-  val commit_num  = WireInit(UInt(8.W),PopCount(io.commit.valid))
+  val commit_valid = WireInit(UInt(8.W),(io.commit.valid).asUInt)
   val commit_data = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.wb_data).reverse))
   val commit_pc   = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.pc).reverse))
-  val commit_str  =  Seq("commit_wen","commit_addr","commit_num","commit_data","commit_pc","commit_timeout")
-  commit_cnt := Mux(commit_wen=/=0.U,0.U,commit_cnt+1.U)
+  val commit_str  =  Seq("commit_wen","commit_addr","commit_valid","commit_data","commit_pc","commit_timeout")
+  commit_cnt := Mux(commit_valid=/=0.U,0.U,commit_cnt+1.U)
   val commit_timeout = commit_cnt===2000.U
-  val result      = RawClockedVoidFunctionCall("commit_event",Some(commit_str))(clock, true.B,commit_wen,commit_addr,commit_num,commit_data,commit_pc,commit_timeout)
+  val result      = RawClockedVoidFunctionCall("commit_event",Some(commit_str))(clock, true.B,commit_wen,commit_addr,commit_valid,commit_data,commit_pc,commit_timeout)
 
 }
 class SimTop (implicit p:Parameters)extends Module{
@@ -36,7 +37,7 @@ class Tile(implicit p: Parameters) extends LazyModule{
     lazy val module = new TileImp(this)
     // val icache = LazyModule(new ICacheWrapper)
     // val masterNode = icache.masterNode
-    val xbar = AXI4Xbar(maxFlightPerId=1)
+    val xbar = GRVXbar(maxFlightPerId=1)
     val lfrontend = LazyModule(new FrontEnd)
     val llsu      = LazyModule(new LSU)
     xbar := lfrontend.masterNode

@@ -113,7 +113,7 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val s2_valid = RegNext(s1_valid)
     val s3_valid = RegNext(s2_valid)
 
-    val s0_pc = io.f0_pc
+    val s0_pc = bankAlign(io.f0_pc)
     val s1_pc = RegNext(s0_pc)
     val s2_pc = RegNext(s1_pc)
 

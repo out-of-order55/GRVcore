@@ -26,7 +26,7 @@ case class CoreParams(
     issueParams :Seq[IssueParams] =  Seq(                
         IssueParams(issueWidth=2, numEntries=8, iqType=IQT_LD.litValue, dispatchWidth=2),
         IssueParams(issueWidth=1, numEntries=8, iqType=IQT_ST.litValue, dispatchWidth=2),
-        IssueParams(issueWidth=2, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=2)),
+        IssueParams(issueWidth=3, numEntries=8, iqType=IQT_INT.litValue, dispatchWidth=2)),
     iqueueParams:IQueueParams = new IQueueParams,
     ftqParams:FtqParams = new FtqParams,
     BIMParams:Option[BIMParams] = Some(new BIMParams) ,

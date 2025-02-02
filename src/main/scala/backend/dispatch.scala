@@ -42,10 +42,11 @@ class ComplexDispatcher(implicit p: Parameters) extends GRVModule{
     val ren_readys = Wire(Vec(issueParams.size, Vec(coreWidth, Bool())))
     //每个的ren都不同
     for(i<- 0 until issueParams.size){
-        val ren = Wire(Vec(coreWidth, Decoupled(new MicroOp)))
+        val ren = WireInit(io.ren_uops)
         val issueParam = issueParams(i)
         val dis        = io.dis_uops(i)
-        ren <> io.ren_uops
+
+        dontTouch(ren)
         //1说明选择这个
         val iq_type = ren.map{u=>(u.bits.iq_type & issueParam.iqType.U).orR}
 
@@ -59,7 +60,9 @@ class ComplexDispatcher(implicit p: Parameters) extends GRVModule{
         dis<>compactor.io.out
         ren_readys(i) := (ren zip iq_type).map{ case(a,b)=> a.ready || !b}
     }
-    ren_readys.map(r=> r.reduce(_&&_)) zip io.ren_uops map{case(r,i)=>
+    dontTouch(ren_readys)
+    
+    Transpose(ren_readys).map(r=> r.reduce(_||_)) zip io.ren_uops map{case(r,i)=>
         i.ready :=  r
     }
 }

@@ -23,7 +23,7 @@ BTB只记录taken的指令，而br可能是000001（循环），所以会一直�
 */
 class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     val BTBnSets      = btbParams.nSets
-    val tagSz         = XLEN - log2Ceil(BTBnSets) - log2Ceil(fetchWidth) - 1
+    val tagSz         = XLEN - log2Ceil(BTBnSets) - fetchWidth 
     val offsetSz      = btbParams.offsetSz
     class BTBEntry extends Bundle{
         val br_type = UInt(2.W)

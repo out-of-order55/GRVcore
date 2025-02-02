@@ -99,20 +99,23 @@ bool time1=false;
 // void super_difftest_step(vaddr_t pc1, vaddr_t pc2,int valid,int data1,int data2,int num){
 
 // } 
+#define coreWidth 2
 void difftest_nstep(int step){
   int wen  = commit.commit_wen;
   int waddr= commit.commit_addr; 
   long wdata= commit.commit_data;
   long pc   = commit.commit_pc;
-  
-  for(int i=0;i<step;i++){
-    if(wen&&0x1){
-      // Log("difftest pc %08x data %08x num %08x waddr %08x",pc,wdata,commit.commit_num,waddr);
+  int valid = commit.commit_valid;
+  for(int i=0;i<coreWidth;i++){
+    if((wen&0x1)&&(valid&0x1)){
+      Log("difftest pc %08x data %08x waddr %08x wen %x",pc,wdata,waddr,commit.commit_wen);
       cpu.gpr[waddr&0x1f] = wdata&0xffffffff;
       
     }
-    difftest_step(pc&0xffffffff,0,true);
-    
+    if(valid&0x1){
+      difftest_step(pc&0xffffffff,0,true);
+    }
+    valid= valid>>1;
     wen = wen>>1;
     wdata = wdata>>32;
     waddr = waddr>>5;

@@ -29,7 +29,7 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
     val rat       = Module(new RAT)
     val freelist  = Module(new FreeList)
     val rat_write_dst        = WireInit(VecInit.fill(coreWidth)(0.U.asTypeOf(Valid(new ReMapReq))))
-    val freelist_write_dst   = WireInit(VecInit.fill(coreWidth)(0.U.asTypeOf(Valid(UInt(pregSz.W)))))
+
     val ratResps  = WireInit(rat.io.resps)
     val freelistResp = WireInit(freelist.io.alloc_pregs)
     val uops      = Wire(Vec(coreWidth,new MicroOp))
@@ -76,15 +76,17 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
         rat_write_dst(i).valid := io.commit.valid(i)
         rat_write_dst(i).bits.ldst:= io.commit.commit_uops(i).ldst
         rat_write_dst(i).bits.pdst:= io.commit.commit_uops(i).pdst
-        freelist_write_dst(i).valid := io.commit.valid(i)
-        freelist_write_dst(i).bits  := io.commit.commit_uops(i).old_pdst
+
+        freelist.io.commit(i).valid := io.commit.valid(i)
+        freelist.io.commit(i).bits.pdst := io.commit.commit_uops(i).pdst
+        freelist.io.commit(i).bits.old_pdst := io.commit.commit_uops(i).old_pdst
     }
     rat.io.commitReqs := rat_write_dst
-    freelist.io.dealloc_pregs := freelist_write_dst
+    // dealloc_pregs := freelist_write_dst
     //redirect
     rat.io.redirect := io.redirect
     freelist.io.redirect := io.redirect
-    freelist.io.redirect_freelist := rat.io.redirect_freelist
+    // freelist.io.redirect_freelist := rat.io.redirect_freelist
 
 
     io.dis_uops.valid := (!io.redirect)&(!freelist.io.empty)&&io.dec_uops.valid

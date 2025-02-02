@@ -40,27 +40,10 @@ class RAT(implicit p: Parameters) extends GRVModule{
         val remapReqs    = Input(Vec(coreWidth,Valid(new ReMapReq)))
         val commitReqs   = Input(Vec(coreWidth,Valid(new ReMapReq)))
         val redirect     = Input(Bool())
-        val redirect_freelist = Output(UInt(numPregs.W))
+        // val redirect_freelist = Output(UInt(numPregs.W))
     })
     val spec_rat    = RegInit(VecInit(Seq.fill(numLregs){0.U(pregSz.W)}))
     val commit_rat  = RegInit(VecInit(Seq.fill(numLregs){0.U(pregSz.W)}))
-    
-    val comm_list = RegInit(UInt(numPregs.W),~(1.U(numPregs.W)))
-    val commit_pdst = WireInit(VecInit(io.commitReqs.map(_.bits.pdst)))
-    val commit_listmask = WireInit((0 until coreWidth).map{i=>
-        UIntToOH(commit_pdst(i),numPregs)&Fill(numPregs,io.commitReqs(i).valid)
-    }.reduce(_|_))
-
-    comm_list  := comm_list&(~commit_listmask)
-
-    // val commit_list = Wire(UInt(numPregs.W))
-    // commit_list := commit_rat.zipWithIndex.map{case(rat,idx)=>
-    //     val commit_wenOH = (0 until coreWidth).map{i=>
-    //         io.commitReqs(i).valid&&idx.U===io.commitReqs(i).bits.ldst
-    //     }
-    //     val commitData = Mux1H(commit_wenOH,io.commitReqs.map(_.bits.pdst))
-    //     UIntToOH(Mux(commit_wenOH.reduce(_||_),commitData,rat),numPregs)
-    // }.reduce(_|_)
 //for waw
     val rat_wen = (0 until coreWidth).map{i=>
         val rat_valid = VecInit(
@@ -70,7 +53,13 @@ class RAT(implicit p: Parameters) extends GRVModule{
         PopCount(rat_valid)===1.U
     }
 
-
+    val commit_rat_wen = (0 until coreWidth).map{i=>
+        val rat_valid = VecInit(
+        (i until coreWidth).map{k=>
+            io.commitReqs(i).bits.ldst===io.commitReqs(k).bits.ldst
+        })
+        PopCount(rat_valid)===1.U
+    }
     //write logic
     // val spec_wmask = WireInit(VecInit((0 until coreWidth).map{i=>
     //     UIntToOH(io.remapReqs(i).bits.ldst,numLregs)&Fill(numLregs,io.remapReqs(i).valid&rat_wen(i))}))
@@ -95,10 +84,11 @@ class RAT(implicit p: Parameters) extends GRVModule{
         val remapData = Mux1H(spec_wenOH,io.remapReqs.map(_.bits.pdst))
 
         val commit_wenOH = (0 until coreWidth).map{i=>
-            io.commitReqs(i).valid&&idx.U===io.commitReqs(i).bits.ldst
+            io.commitReqs(i).valid&&idx.U===io.commitReqs(i).bits.ldst&commit_rat_wen(i)
         }
         val commitData = Mux1H(commit_wenOH,io.commitReqs.map(_.bits.pdst))
-        
+        assert(PopCount(commit_wenOH)<=1.U,"multi commit port write one rat entry")
+        assert(PopCount(spec_wenOH)<=1.U,"multi port write one rat entry")
         rat := Mux(io.redirect,
                 Mux(commit_wenOH.reduce(_||_),commitData,com_rat),
                 Mux(spec_wenOH.reduce(_||_),remapData,rat))
@@ -117,6 +107,6 @@ class RAT(implicit p: Parameters) extends GRVModule{
             Mux(io.remapReqs(k).valid && io.remapReqs(k).bits.ldst === io.reqs(i).ldst, io.remapReqs(k).bits.pdst, p))
 
         }
-    io.redirect_freelist := comm_list&(~commit_listmask)
+    // io.redirect_freelist := comm_list&(~commit_listmask)
 
 }

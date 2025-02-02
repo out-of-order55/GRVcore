@@ -31,16 +31,16 @@ class FreeListTest (implicit  p:Parameters) extends GRVModule{
     freelist.io.reqs := reqs.asBools
     dontTouch(freelist.io.alloc_pregs)
     
-    freelist.io.dealloc_pregs:= RegNext(RegNext(freelist.io.alloc_pregs))
-    val deqNum   = PopCount(freelist.io.dealloc_pregs.map(_.valid))
+    // freelist.io.dealloc_pregs:= RegNext(RegNext(freelist.io.alloc_pregs))
+    // val deqNum   = PopCount(freelist.io.dealloc_pregs.map(_.valid))
     val enqNum   = PopCount(reqs)
     val startNum = RegInit(63.U(10.W))
-    startNum := startNum-enqNum+deqNum
+    startNum := startNum-enqNum
 
     reqs := reqs + 1.U
     dontTouch(startNum)
-    dontTouch(enqNum)
-    dontTouch(deqNum)
+    // dontTouch(enqNum)
+    // dontTouch(deqNum)
     timer := timer +1.U
     check.io.clock := clock
     check.io.reset := reset

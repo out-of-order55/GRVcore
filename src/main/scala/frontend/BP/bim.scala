@@ -104,7 +104,7 @@ class BIMBranchPredictor(implicit p: Parameters) extends BasePredictor
         data(w).io.addr    := idx 
         data(w).io.write   := wen 
         data(w).io.dataIn  := Mux(doing_reset,1.U,s1_update_wdata(w))
-        s2_req_rdata(w)    := (data(w).io.dataOut)
+        s2_req_rdata(w)    := RegNext(data(w).io.dataOut)
 
     }
 
