@@ -293,13 +293,13 @@ static long load_img() {
   return size;
 }
 
-void npc_trap(uint32_t inst,uint32_t pc){
-  int trap_code=1; 
-  if(inst==0x00100073){
+void npc_trap(bool trap){
+  int trap_code=1;
+  if(trap){
     trap_code=cpu.gpr[10];
     Log("npc: %s at " FMT_WORD,
           (trap_code == 0 ? ANSI_FMT("HIT GOOD TRAP", ANSI_FG_GREEN) :
-            ANSI_FMT("HIT BAD TRAP", ANSI_FG_RED)),pc);
+            ANSI_FMT("HIT BAD TRAP", ANSI_FG_RED)),cpu.pc);
     #ifdef Performance
     Stat::performance();
     #endif
@@ -455,6 +455,7 @@ void npc_si(){
   #endif
   
   TraceAndDiff();
+  npc_trap(commit.commit_finish);
   start_time=GetTime();
   CLOCK();
   //printf("pc:%08x inst:%08x\n",pc_debug,inst_debug);

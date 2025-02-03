@@ -41,7 +41,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val decode_units = Seq.fill(coreWidth)(Module(new DecodeUnit))
     val rename_stage = Module(new RenameStage)
     val alujmp_unit      = Module(new ALUExuUnit(true,true,false,false))
-    val alu_unit      = Module(new ALUExuUnit(true,false,false,false))
+    val alu_unit      = Module(new ALUExuUnit(true,false,false,false,true))
     // val alu_unit         = Module(new ALUExuUnit(true,false,false,false))
     val muldiv_unit      = Module(new ALUExuUnit(false,false,true,true))
 
@@ -147,10 +147,11 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val alu_uop = WireInit(dispatcher.io.dis_uops(int_iss_idx))
     val rob_idx= WireInit(rob.io.enq_idxs)
     val int_fu_type = Seq(alujmp_unit.io.fu_types,alu_unit.io.fu_types,muldiv_unit.io.fu_types)
+    val rob_ready = WireInit(rob.io.enq.uops.map(_.fire).reduce(_&&_))
     for(i <- 0 until intIssueParam.dispatchWidth){
         alu_uop(i).bits.rob_idx := Mux(rob_idx(i).valid,rob_idx(i).bits,0.U)
         
-        int_iss_unit.io.dis_uops(i).valid := alu_uop(i).valid
+        int_iss_unit.io.dis_uops(i).valid := alu_uop(i).valid&rob_ready
         int_iss_unit.io.dis_uops(i).bits  := alu_uop(i).bits
         dispatcher.io.dis_uops(int_iss_idx)(i).ready := int_iss_unit.io.dis_uops(i).ready&&rob_enq_ready(i)
 
@@ -168,7 +169,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     for(j <- 0 until ldIssueParam.dispatchWidth){
         ld_uop(j).bits.ldq_idx := Mux(ldq_idx(j).valid,ldq_idx(j).bits,0.U)
         ld_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
-        ld_iss_unit.io.dis_uops(j).valid := ld_uop(j).valid
+        ld_iss_unit.io.dis_uops(j).valid := ld_uop(j).valid&rob_ready
         ld_iss_unit.io.dis_uops(j).bits  := ld_uop(j).bits
         dispatcher.io.dis_uops(ld_iss_idx)(j).ready := ld_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)&&ld_enq_ready(j)
         io.lsu.dis(1).enq(j).valid := ld_uop(j).valid
@@ -186,7 +187,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
         st_uop(j).bits.ldq_idx := Mux(stq_idx(j).valid,stq_idx(j).bits,0.U)
         st_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
         // st_iss_unit.io.fu_using(j) := mem_fu_types
-        st_iss_unit.io.dis_uops(j).valid := st_uop(j).valid
+        st_iss_unit.io.dis_uops(j).valid := st_uop(j).valid&rob_ready
         st_iss_unit.io.dis_uops(j).bits  := st_uop(j).bits
         dispatcher.io.dis_uops(st_iss_idx)(j).ready := st_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)&&st_enq_ready(j)
 

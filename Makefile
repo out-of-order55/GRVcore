@@ -127,8 +127,11 @@ verilog:
 debug :
 	@echo "---------------- GENERATE VERILOG ----------------"
 # @VERILATOR_ROOT
-	@mkdir -p $(VERILOG_FILE)
-	@sh ./wave.sh&&gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
+	@mkdir -p $(VERILOG_FILE)/rtl &&mkdir -p $(VERILOG_FILE)/vcd
+	@exec > >(tee $(VERILOG_FILE)/debug.log) 2>&1 
+	@sh ./wave.sh 2>&1 | tee $(VERILOG_FILE)/debug.log || exit 1
+
+	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/vcd/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 # @rm  -r $(VERILOG_FILE)
 test:
 	@echo "-------------------- UNIT TEST----------------"

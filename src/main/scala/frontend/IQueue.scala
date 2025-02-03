@@ -71,7 +71,7 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
     dontTouch(enqNextPtr)
     val numValid = WireInit(0.U((iqSz+1).W))
     dontTouch(numValid)
-    numValid := Mux((enq_ptr>=deq_ptr),enq_ptr-deq_ptr,iqentries.U-(deq_ptr-enq_ptr))
+    numValid := Mux((enq_ptr>=deq_ptr),enq_ptr-deq_ptr,(iqentries<<1).U-(deq_ptr-enq_ptr))
         // Mux(enq_ptr>=deq_ptr,enq_ptr-deq_ptr,iqentries.U-(deq_ptr-enq_ptr))
     //满的判断需要不仅在本周期判断：也要在上周期判断，然后寄存下来到本周期
     

@@ -5,6 +5,7 @@ import grvcore.common._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
+import freechips.rocketchip.rocket.CSR
 // import org.chipsalliance.cde.config._
 import freechips.rocketchip.util.DontTouch
 import chisel3.util.circt.dpi._
@@ -17,15 +18,17 @@ class DifftestWrapper (implicit p:Parameters)extends GRVModule{
                       a.ldst_val&&b})).asUInt)
   dontTouch(commit_wen)
   val commit_cnt= RegInit(0.U(32.W))
-
+  val commit_finish = (0 until coreWidth).map{i=>
+    io.commit.commit_uops(i).ctrl.csr_cmd===CSR.I&&io.commit.valid(i)
+  }.reduce(_||_)
   val commit_addr = WireInit(UInt(32.W),VecInit(io.commit.commit_uops.map(_.ldst)).asUInt)
   val commit_valid = WireInit(UInt(8.W),(io.commit.valid).asUInt)
   val commit_data = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.wb_data).reverse))
   val commit_pc   = WireInit(UInt((XLEN*coreWidth).W),Cat(io.commit.commit_uops.map(_.pc).reverse))
-  val commit_str  =  Seq("commit_wen","commit_addr","commit_valid","commit_data","commit_pc","commit_timeout")
+  val commit_str  =  Seq("commit_wen","commit_addr","commit_valid","commit_data","commit_pc","commit_timeout","commit_finish")
   commit_cnt := Mux(commit_valid=/=0.U,0.U,commit_cnt+1.U)
   val commit_timeout = commit_cnt===2000.U
-  val result      = RawClockedVoidFunctionCall("commit_event",Some(commit_str))(clock, true.B,commit_wen,commit_addr,commit_valid,commit_data,commit_pc,commit_timeout)
+  val result      = RawClockedVoidFunctionCall("commit_event",Some(commit_str))(clock, true.B,commit_wen,commit_addr,commit_valid,commit_data,commit_pc,commit_timeout,commit_finish)
 
 }
 class SimTop (implicit p:Parameters)extends Module{

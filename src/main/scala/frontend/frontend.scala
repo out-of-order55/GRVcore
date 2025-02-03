@@ -11,6 +11,7 @@ import freechips.rocketchip.util.DontTouch
 
 trait HasFrontendParameters extends HasICacheParameters{
     override val bankWidth: Int = fetchWidth
+    val HasBP:Boolean = false
     def bankoffset(addr:UInt) = addr(offsetWidth-1,offsetWidth-log2Ceil((XLEN/8)))
     def bankAlign(addr:UInt) =(addr>>bankWidth)<<bankWidth
 }
@@ -127,7 +128,7 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
 //pred info
     val s1_bp_resp =  WireInit(bp.io.resp.f1)
     val s1_taken   =  (0 until fetchWidth).map{i=>
-        s1_bp_resp.preds(i).taken&s1_bp_resp.preds(i).predicted_pc.valid&s1_mask(i)===1.U
+        s1_bp_resp.preds(i).taken&s1_bp_resp.preds(i).predicted_pc.valid&s1_mask(i)===1.U&&HasBP.B
     }
 
     val s1_taken_idx = PriorityEncoder(s1_taken)
@@ -165,7 +166,7 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     val s2_bp_resp =  WireInit(bp.io.resp.f2)
 
     val s2_taken   =  (0 until fetchWidth).map{i=>
-        s2_bp_resp.preds(i).taken&s2_bp_resp.preds(i).predicted_pc.valid&s2_mask(i)===1.U
+        s2_bp_resp.preds(i).taken&s2_bp_resp.preds(i).predicted_pc.valid&s2_mask(i)===1.U&&HasBP.B
     }
 
     val s2_taken_idx = PriorityEncoder(s2_taken)
@@ -235,10 +236,10 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     s3_fetch_bundle.mask        := s3_resp.mask
     s3_fetch_bundle.insts       := s3_resp.inst
     s3_fetch_bundle.ghist       := s3_resp.ghist
-    s3_fetch_bundle.cfi_idx.valid:=s3_bp_resp.preds(s3_taken_idx).taken&&s3.io.deq.valid &&s3_bp_resp.preds(s3_taken_idx).predicted_pc.valid
+    s3_fetch_bundle.cfi_idx.valid:=s3_bp_resp.preds(s3_taken_idx).taken&&s3.io.deq.valid &&s3_bp_resp.preds(s3_taken_idx).predicted_pc.valid&&HasBP.B
     s3_fetch_bundle.cfi_idx.bits:= s3_taken_idx
     s3_fetch_bundle.cfi_type    := s3_bp_resp.preds(s3_taken_idx).br_type
-    s3_fetch_bundle.cfi_taken   := s3_bp_resp.preds(s3_taken_idx).taken&&s3_bp_resp.preds(s3_taken_idx).predicted_pc.valid
+    s3_fetch_bundle.cfi_taken   := s3_bp_resp.preds(s3_taken_idx).taken&&s3_bp_resp.preds(s3_taken_idx).predicted_pc.valid&&HasBP.B
     s3_fetch_bundle.is_jal      := s3_bp_resp.preds(s3_taken_idx).is_jal
     s3_fetch_bundle.is_jalr     := s3_bp_resp.preds(s3_taken_idx).is_jalr
     s3_fetch_bundle.br_mask     := UIntToOH(s3_taken_idx,fetchWidth)

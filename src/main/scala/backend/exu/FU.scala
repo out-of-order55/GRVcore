@@ -90,7 +90,20 @@ extends FunctionalUnit(
     io.resp.bits.wb_data := alu.io.out
 }
 
+class CSRUnit(dataWidth: Int)(implicit p: Parameters)
+extends FunctionalUnit(
+    isJmpUnit = false,
+    dataWidth = dataWidth){
 
+
+    
+    io.req.ready:= true.B
+
+
+    io.resp.valid := io.req.fire
+    io.resp.bits.uop := io.req.bits.uop
+    io.resp.bits.wb_data := 0.U
+}
 
 
 

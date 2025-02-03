@@ -73,7 +73,7 @@ class RenameStage(implicit p: Parameters) extends GRVModule{
     //commit
     
     for(i<- 0 until coreWidth){
-        rat_write_dst(i).valid := io.commit.valid(i)
+        rat_write_dst(i).valid := io.commit.valid(i)&&io.commit.commit_uops(i).ldst_val
         rat_write_dst(i).bits.ldst:= io.commit.commit_uops(i).ldst
         rat_write_dst(i).bits.pdst:= io.commit.commit_uops(i).pdst
 

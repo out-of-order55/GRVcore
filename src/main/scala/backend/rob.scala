@@ -39,7 +39,7 @@ class Exception(implicit p: Parameters) extends GRVBundle{
 class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
 
     val enq         = Flipped(new robEnqueue)
-    val enq_idxs    = Output(Vec(coreWidth,Valid(UInt(log2Ceil(ROBEntry).W))))
+    val enq_idxs    = Output(Vec(coreWidth,Valid(UInt(log2Ceil(ROBEntry+1).W))))
     val wb_resp     = Flipped(Vec(numWakeupPorts, Valid(new ExuResp)))
 
     val lsuexc      = Flipped(Valid(new Exception))
@@ -61,7 +61,8 @@ class ROBEntryBundle(implicit p: Parameters)extends Bundle{
 }
 class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val io = IO(new ROBIO(numWakeupPorts))
-    val RobSz = log2Ceil(ROBEntry)
+    val RobSz = log2Ceil(ROBEntry)-1
+    val RobbankSz = log2Ceil((ROBEntry/coreWidth)+1)
     /* 
     ROB状态机 
     idle    ：rob初始状态， 开机之后如果不reset就不会进入，
@@ -72,14 +73,12 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val s_idle::s_normal::s_wait_repair::s_redirect::Nil = Enum(4)
     val rob_state = RegInit(s_idle)
 
-    val rob_enq_ptr = RegInit(0.U(log2Ceil(ROBEntry+1).W))
-    val rob_deq_ptr = RegInit(0.U(log2Ceil(ROBEntry+1).W))
+    val rob_enq_ptr = RegInit(0.U(RobbankSz.W))
+    val rob_deq_ptr = RegInit(0.U(RobbankSz.W))
     val full = Wire(Bool())
     
     val do_enq = WireInit(VecInit(io.enq.uops.map{i=>i.fire&&(rob_state=/=s_redirect)}))
     // val do_deq = Wire(Bool())
-
-    
 
     
 
@@ -91,24 +90,26 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         if(coreWidth == 1) { return 0.U }
         else           { return rob_idx(log2Ceil(coreWidth)-1, 0).asUInt }
     }
-    def GetPtrMask(ptr:UInt):UInt={
-        return ptr(RobSz)
+    def GetPtrMask(ptr:UInt,size:Int):UInt={
+        return ptr(size-1)
     }
-    def GetPtrVal(ptr:UInt):UInt={
-        return ptr(RobSz-1,0)
+    def GetPtrVal(ptr:UInt,size:Int):UInt={
+        return ptr(size-2,0)
     }
     def isOlder(idx1:UInt,idx2:UInt):Bool={
-        GetPtrMask(idx1)===GetPtrMask(idx2)&&
-        GetPtrVal(idx1)<GetPtrVal(idx2)||
-        GetPtrMask(idx1)=/=GetPtrMask(idx2)&&
-        GetPtrVal(idx1)>GetPtrVal(idx2)
+        val size = log2Ceil(ROBEntry+1)
+        GetPtrMask(idx1,size)===GetPtrMask(idx2,size)&&
+        GetPtrVal(idx1,size)<GetPtrVal(idx2,size)||
+        GetPtrMask(idx1,size)=/=GetPtrMask(idx2,size)&&
+        GetPtrVal(idx1,size)>GetPtrVal(idx2,size)
     }
     val rob_entry   = RegInit(VecInit.fill(coreWidth)(VecInit.fill(ROBEntry/coreWidth)(0.U.asTypeOf(new ROBEntryBundle))))
     
-    val rob_enq_val = GetPtrVal(rob_enq_ptr)
-    val rob_deq_val = GetPtrVal(rob_deq_ptr)
-    val rob_enq_mask= GetPtrMask(rob_enq_ptr)
-    val rob_deq_mask= GetPtrMask(rob_deq_ptr)
+    val rob_enq_val = GetPtrVal(rob_enq_ptr,RobbankSz)
+    val rob_deq_val = GetPtrVal(rob_deq_ptr,RobbankSz)
+    val rob_enq_mask= GetPtrMask(rob_enq_ptr,RobbankSz)
+    val rob_deq_mask= GetPtrMask(rob_deq_ptr,RobbankSz)
+    dontTouch(rob_enq_mask)
     //enq
     val enqInfo     = WireInit(io.enq)
     val br_info     = WireInit(io.br_info)
@@ -150,14 +151,19 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     flush := br_info.bits.cfi_mispredicted&&br_info.valid&&is_flush_older
     dontTouch(do_enq)
     dontTouch(rob_deq_val)
+    dontTouch(is_flush_older)
+    val enq_idxs    = VecInit.tabulate(coreWidth)(i => PopCount(do_enq.take(i)))
+    val enq_offset  = VecInit(enq_idxs.map(_+rob_enq_val))
+    assert(PopCount(do_enq)===0.U||PopCount(do_enq)===coreWidth.U,"rob enq not fully")
     for(i <- 0 until coreWidth){
 
+        
         //enq
         when(do_enq(i)){
             // rob_entry(i)(rob_enq_val).finish := false.B
             rob_entry(i)(rob_enq_val).valid := enqInfo.uops(i).valid
             rob_entry(i)(rob_enq_val).uop   := enqInfo.uops(i).bits
-            io.enq_idxs(i).bits := (rob_enq_val<<1) + i.U
+            io.enq_idxs(i).bits := Cat(rob_enq_mask,(rob_enq_val<<log2Ceil(coreWidth)) + i.U)
             io.enq_idxs(i).valid:= true.B
         }
         
@@ -189,10 +195,13 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     for(i<-0 until numWakeupPorts){
         val wb_rob_bank = GetBankIdx(io.wb_resp(i).bits.uop.rob_idx)
         val wb_rob_idx  = GetRowIdx(io.wb_resp(i).bits.uop.rob_idx)
+        dontTouch(wb_rob_bank)
+        dontTouch(wb_rob_idx)
         when(io.wb_resp(i).valid){
             rob_entry(wb_rob_bank)(wb_rob_idx).finish := true.B
             if(hasDebug){
                 rob_entry(wb_rob_bank)(wb_rob_idx).uop.wb_data := io.wb_resp(i).bits.wb_data
+                rob_entry(wb_rob_bank)(wb_rob_idx).uop.ctrl := io.wb_resp(i).bits.uop.ctrl
             }
         }
     }

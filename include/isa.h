@@ -11,6 +11,7 @@ typedef struct {
   char      commit_valid  ;
   long long commit_data ; 
   long long commit_pc   ;
+  char      commit_finish  ;
 }Commit;
 
 #endif

@@ -245,13 +245,16 @@ int commit_addr,
 char commit_valid, 
 long long commit_data, 
 long long commit_pc,
-svBit commit_timeout
+svBit commit_timeout,
+svBit commit_finish
 ){
     commit.commit_wen  = commit_wen  ; 
     commit.commit_addr = commit_addr ; 
     commit.commit_valid  = commit_valid  ; 
     commit.commit_data = commit_data ; 
     commit.commit_pc   = commit_pc   ;
+    commit.commit_finish= commit_finish;
+
     if(commit_timeout){
         Log("Time Out");
         #ifdef  CONFIG_WAVE_TRECE

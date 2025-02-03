@@ -53,12 +53,21 @@ class RAT(implicit p: Parameters) extends GRVModule{
         PopCount(rat_valid)===1.U
     }
 
-    val commit_rat_wen = (0 until coreWidth).map{i=>
+    val commit_rat_wen = VecInit((0 until coreWidth).map{i=>
         val rat_valid = VecInit(
         (i until coreWidth).map{k=>
-            io.commitReqs(i).bits.ldst===io.commitReqs(k).bits.ldst
+            io.commitReqs(i).valid&&io.commitReqs(k).valid&&
+            (io.commitReqs(i).bits.ldst===io.commitReqs(k).bits.ldst)
         })
         PopCount(rat_valid)===1.U
+    })
+    dontTouch(commit_rat_wen)
+
+    if(hasDebug){
+        val dbg_free_list = WireInit(UInt(numPregs.W),~(1.U(numPregs.W)))
+
+        dbg_free_list := ~(commit_rat.map{i=>UIntToOH(i)}.reduce(_|_))
+        dontTouch(dbg_free_list)
     }
     //write logic
     // val spec_wmask = WireInit(VecInit((0 until coreWidth).map{i=>

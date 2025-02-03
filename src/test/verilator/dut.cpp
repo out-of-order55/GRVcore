@@ -108,7 +108,7 @@ void difftest_nstep(int step){
   int valid = commit.commit_valid;
   for(int i=0;i<coreWidth;i++){
     if((wen&0x1)&&(valid&0x1)){
-      Log("difftest pc %08x data %08x waddr %08x wen %x",pc,wdata,waddr,commit.commit_wen);
+      // Log("difftest pc %08x data %08x waddr %08x wen %x",pc,wdata,waddr,commit.commit_wen);
       cpu.gpr[waddr&0x1f] = wdata&0xffffffff;
       
     }
@@ -122,6 +122,7 @@ void difftest_nstep(int step){
     pc    = pc>>32;
     cpu.pc = pc;
   }
+
 }
 void difftest_step(vaddr_t pc, vaddr_t npc,bool diff_mode) {
   // if(inst_num==1){

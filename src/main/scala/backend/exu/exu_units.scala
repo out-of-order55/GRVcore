@@ -24,20 +24,7 @@ class ExuReq(implicit p: Parameters) extends GRVBundle{
     val rs1_data     = UInt(XLEN.W)
     val rs2_data     = UInt(XLEN.W)
 }
-// abstract class ExecutionUnit(
-//     val isAluUnit:Boolean = true,
-//     val isJmpUnit:Boolean = false,
-//     val isMulUnit:Boolean = false,
-//     val isDivUnit:Boolean = false
-// )(implicit p: Parameters) extends GRVModule
-// {
-//     val numIrfReadPorts = (if (isAluUnit) 1 else 0) + (if (isJmpUnit) 1 else 0) + (if (isMulUnit) 1 else 0) + (if (isDivUnit) 1 else 0)
-//     val numIrfWritePorts = (if (isAluUnit) 1 else 0)  + (if (isMulUnit) 1 else 0) + (if (isDivUnit) 1 else 0)
-//     println(f"numport:$numIrfWritePorts ")
 
-
-
-// }
 /* 
 目前为简便处理，只允许ALU+JMP
 MUL+DIV
@@ -47,13 +34,14 @@ class ALUExuUnit(
     hasJMP:Boolean=false,
     hasMUL:Boolean=false,
     hasDIV:Boolean=false,
+    hasCSR:Boolean=false,
 )(implicit p: Parameters)extends GRVModule{
     val imulLatency = 3
     val iresp_fu_units = ArrayBuffer[FunctionalUnit]()
     def length = iresp_fu_units.length
-    val numIrfReadPorts = Seq(hasALU,hasDIV,hasMUL,hasJMP).count(identity)
+    val numIrfReadPorts = Seq(hasALU,hasDIV,hasMUL,hasJMP,hasCSR).count(identity)
         // (if (hasALU) 1 else 0) + (if (hasDIV) 1 else 0) + (if (hasMUL) 1 else 0) + (if (hasJMP) 1 else 0)
-    val numIrfWritePorts = Seq(hasALU,hasDIV,hasJMP,hasMUL).count(identity)
+    val numIrfWritePorts = Seq(hasALU,hasDIV,hasJMP,hasMUL,hasCSR).count(identity)
     
 
     val io = IO(new Bundle {
@@ -81,7 +69,8 @@ class ALUExuUnit(
     io.fu_types := Mux(hasALU.B, FU_ALU, 0.U) |
                     Mux(hasMUL.B, FU_MUL, 0.U) |
                     Mux(!div_bsy && hasDIV.B, FU_DIV, 0.U)|
-                    Mux(hasJMP.B, FU_JMP, 0.U)
+                    Mux(hasJMP.B, FU_JMP, 0.U)|
+                    Mux(hasCSR.B, FU_CSR, 0.U)
     if (hasALU) {
         val alu = Module(new ALUUnit(XLEN))
         alu.io <> DontCare
@@ -155,7 +144,19 @@ class ALUExuUnit(
 
         iresp_fu_units += div
     }
+    if(hasCSR){
+        val csr = Module(new CSRUnit(XLEN))
+        csr.io <> DontCare
+        csr.io.req.valid := io.req.valid &&io.req.bits.uop.fu_code === FU_CSR 
 
+
+        csr.io.req.bits.uop      := io.req.bits.uop
+        csr.io.req.bits.kill     := io.req.bits.kill
+        csr.io.req.bits.rs1_data := io.req.bits.rs1_data
+        csr.io.req.bits.rs2_data := io.req.bits.rs2_data
+        csr.io.resp.ready := DontCare
+        iresp_fu_units += csr
+    }
     // io.iresp.bits.wb_data := PriorityMux(iresp_fu_units.map(f =>
     //     (f.io.resp.valid, f.io.resp.bits.wb_data)).toSeq)
     if(numIrfWritePorts==1){
@@ -177,7 +178,8 @@ class ALUExuUnit(
         alu = hasALU,
         jmp = hasJMP,
         mem = false,
-        muld = hasMUL || hasDIV
+        muld = hasMUL || hasDIV,
+        csr = hasCSR
         )
     }
     io.req.ready := Mux(hasDIV.B,!div_bsy,true.B)
