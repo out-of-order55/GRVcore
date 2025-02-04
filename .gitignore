@@ -14,7 +14,6 @@
 !.gitmodules
 !README.md
 !config/.gtkwaverc
-# !wave.sh
 !.mill-version
 build/
 obj_dir/

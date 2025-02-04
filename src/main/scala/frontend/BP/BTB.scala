@@ -62,22 +62,33 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
 
 
     val s1_update_meta            = s1_update.bits.meta.asTypeOf(new BTBPredMeta)
+    val s1_update_hit             = s1_update_meta.hit
     val s1_update_index           = s1_update_idx
 
 
 
-
+    dontTouch(s1_update_meta)
     val new_offset_value = (s1_update.bits.target.asSInt -
         (s1_update.bits.pc + (s1_update.bits.cfi_idx.bits<<2)).asSInt)
     dontTouch(new_offset_value)
     val s1_update_cfi_idx   = s1_update.bits.cfi_idx.bits
-    val s1_update_wbtb_data     = Wire(new BTBEntry)
+    val s1_update_wbtb_data     = Wire(Vec(bankNum,new BTBEntry))
 
-    s1_update_wbtb_data.offset    := new_offset_value.asUInt
-    s1_update_wbtb_data.br_type   := s1_update.bits.cfi_type 
-
+    for(i <- 0 until bankNum){
+        when(i.U===s1_update_cfi_idx){
+            s1_update_wbtb_data(i).offset    := new_offset_value.asUInt
+            s1_update_wbtb_data(i).br_type   := s1_update.bits.cfi_type 
+        }.otherwise{
+            s1_update_wbtb_data(i).offset    := 0.U
+            s1_update_wbtb_data(i).br_type   := 0.U
+        }
+    }
+    // s1_update_wbtb_data.offset    := new_offset_value.asUInt
+    // s1_update_wbtb_data.br_type   := s1_update.bits.cfi_type 
+    val s1_commit_update_valid =  s1_update_valid  && s1_update.bits.is_commit_update
     val s1_update_wbtb_mask = (UIntToOH(s1_update_cfi_idx) &
-        Fill(bankNum, s1_update.bits.cfi_idx.valid && s1_update.valid  && s1_update.bits.is_commit_update))
+        Fill(bankNum, s1_update.bits.cfi_idx.valid && s1_commit_update_valid))|
+        Fill(bankNum,s1_commit_update_valid&&(!s1_update_hit))
     val s1_update_taken =  s1_update.bits.cfi_idx.valid && s1_update.valid  && s1_update.bits.is_commit_update
 
 
@@ -110,12 +121,12 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
 
 
     for (w <- 0 until bankNum) { 
-        val update_valid =  s1_update.valid && s1_update.bits.is_commit_update
+        val update_valid =  (s1_update.valid && s1_update.bits.is_commit_update)
         val idx   =  Mux(doing_reset,reset_idx, Mux(update_valid,s1_update_index,Mux(s0_valid,s0_idx,0.U))) 
         btb(w).io.enable  := s1_update_wbtb_mask(w)||s0_valid ||doing_reset
         btb(w).io.addr    := idx 
         btb(w).io.write   := Mux(doing_reset,true.B,s1_update_wbtb_mask(w)) 
-        btb(w).io.dataIn  := Mux(doing_reset,reset_wbtb_data,s1_update_wbtb_data)
+        btb(w).io.dataIn  := Mux(doing_reset,reset_wbtb_data,s1_update_wbtb_data(w))
         s2_req_rdata(w)   := btb(w).io.dataOut
     }
     // s2_req_rdata := DontCare

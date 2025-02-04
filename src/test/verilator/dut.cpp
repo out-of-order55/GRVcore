@@ -76,7 +76,7 @@ static void checkregs(CPU_state *ref, vaddr_t pc) {
     #ifdef  CONFIG_WAVE_TRECE
     tfp->close();
     #endif
-    assert(0);
+    // assert(0);
     exit(0);
   }
 }

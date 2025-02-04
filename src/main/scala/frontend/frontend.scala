@@ -11,7 +11,7 @@ import freechips.rocketchip.util.DontTouch
 
 trait HasFrontendParameters extends HasICacheParameters{
     override val bankWidth: Int = fetchWidth
-    val HasBP:Boolean = false
+    val HasBP:Boolean = true
     def bankoffset(addr:UInt) = addr(offsetWidth-1,offsetWidth-log2Ceil((XLEN/8)))
     def bankAlign(addr:UInt) =(addr>>bankWidth)<<bankWidth
 }
@@ -222,9 +222,11 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     }
     val s3_taken_idx = PriorityEncoder(s3_taken)
 //////////////////////s4///////////////////////
+
 /* 
 写入ftq和ibuf，前段完成
  */
+
     bp.io.f3_fire := s3.io.deq.fire
     ftq.io.enq.valid := s3.io.deq.valid&(!s3_clear)&ibuf.io.enq.ready
     ibuf.io.enq.valid:= s3.io.deq.valid&(!s3_clear)&ftq.io.enq.ready
