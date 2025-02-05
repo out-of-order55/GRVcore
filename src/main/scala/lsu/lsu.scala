@@ -24,7 +24,7 @@ class DisIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val enq_idx = (Vec(coreWidth,Valid(UInt(log2Ceil(numLDQs).W))))//dispatch
 }
 class LSUBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
-    val dis          = Vec(2,new DisIO)//写入 0 for ld 1 for st
+    val dis          = Vec(2,new DisIO)//写入 0 for st 1 for ld
 
     
     val ld_req           = Vec(numReadport,Flipped(Valid(new LSUReq)))//read issue
@@ -58,6 +58,7 @@ with HasDCacheParameters with GRVOpConstants{
     st_pipeline.io.dis <> io.dis(0)
     st_pipeline.io.req := io.st_req
     st_pipeline.io.flush:= io.flush
+    // st_pipeline.io.flush:= false.B
     st_pipeline.io.commit:= io.commit
     st_pipeline.io.wb_resp<> io.st_wb_resp
 /////////////////////////   TO LD     ///////////////////////////////

@@ -166,7 +166,9 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
         store_buf(i).flag.valid         := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),false.B,
                                             Mux(do_enq&&enq_sels(i)&&((!checkOH.reduce(_||_)||
                                             (is_has_same_entry)&&(checkOH.reduce(_||_)))),true.B,store_buf(i).flag.valid ))
-        
+        for(j <- 0 until bankNum){
+            store_buf(i).mask(j) := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),0.U,store_buf(i).mask(j) )
+        }
         store_buf(i).flag.timeout       := Mux(resp_sels(i)&&resp_replay ,true.B ,
                                         Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i)||store_buf(i).retry_cnt===timeOut,false.B,store_buf(i).flag.timeout)) 
 

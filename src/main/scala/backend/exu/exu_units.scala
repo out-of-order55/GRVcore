@@ -53,6 +53,7 @@ class ALUExuUnit(
 
         val get_ftq_pc = if (hasJMP) Flipped(new GetPCFromFtqIO()) else null
         val brupdate = if (hasJMP) Output(Valid(new BrUpdateInfo)) else null
+        val flush    = Input(Bool())
     })
 
     
@@ -78,7 +79,7 @@ class ALUExuUnit(
 
 
         alu.io.req.bits.uop      := io.req.bits.uop
-        alu.io.req.bits.kill     := io.req.bits.kill
+        alu.io.req.bits.kill     := io.req.bits.kill||io.flush
         alu.io.req.bits.rs1_data := io.req.bits.rs1_data
         alu.io.req.bits.rs2_data := io.req.bits.rs2_data
         alu.io.resp.ready := DontCare
@@ -95,7 +96,7 @@ class ALUExuUnit(
 
 
         jmp.io.req.bits.uop      := io.req.bits.uop
-        jmp.io.req.bits.kill     := io.req.bits.kill
+        jmp.io.req.bits.kill     := io.req.bits.kill||io.flush
         jmp.io.req.bits.rs1_data := io.req.bits.rs1_data
         jmp.io.req.bits.rs2_data := io.req.bits.rs2_data
 
@@ -120,7 +121,7 @@ class ALUExuUnit(
         mul.io.req.bits.uop      := io.req.bits.uop
         mul.io.req.bits.rs1_data := io.req.bits.rs1_data
         mul.io.req.bits.rs2_data := io.req.bits.rs2_data
-        mul.io.req.bits.kill     := io.req.bits.kill
+        mul.io.req.bits.kill     := io.req.bits.kill||io.flush
         iresp_fu_units += mul
     }
 
@@ -134,7 +135,7 @@ class ALUExuUnit(
         div.io.req.bits.rs1_data   := io.req.bits.rs1_data
         div.io.req.bits.rs2_data   := io.req.bits.rs2_data
 
-        div.io.req.bits.kill       := io.req.bits.kill
+        div.io.req.bits.kill       := io.req.bits.kill||io.flush
 
         div.io.resp.ready := !(iresp_fu_units.map(_.io.resp.valid).reduce(_|_))
 
@@ -151,7 +152,7 @@ class ALUExuUnit(
 
 
         csr.io.req.bits.uop      := io.req.bits.uop
-        csr.io.req.bits.kill     := io.req.bits.kill
+        csr.io.req.bits.kill     := io.req.bits.kill||io.flush
         csr.io.req.bits.rs1_data := io.req.bits.rs1_data
         csr.io.req.bits.rs2_data := io.req.bits.rs2_data
         csr.io.resp.ready := DontCare

@@ -3,7 +3,7 @@
 #include <array>
 #include <svdpi.h>
 
-char *UT_file = "./image/add-riscv32-nemu.bin";
+char *UT_file = "./image/lw-sw-order-riscv32-nemu.bin";
 static long UT_load_img() {
     if (UT_file == NULL) {
         printf("No image is given. Use the default build-in image.\n");

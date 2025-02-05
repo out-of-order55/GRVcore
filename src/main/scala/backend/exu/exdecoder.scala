@@ -13,7 +13,7 @@ import freechips.rocketchip.rocket.ALU._
  */
 class RRdCtrlSigs(implicit p: Parameters) extends GRVBundle
 {
-    val br_type          = UInt(BR_N.getWidth.W)
+    val br_type          = UInt(BJP_N.getWidth.W)
     val op_fcn      = Bits(SZ_ALU_FN.W)
     val fcn_dw      = Bool()
     val op1_sel     = UInt(OP1_X.getWidth.W)

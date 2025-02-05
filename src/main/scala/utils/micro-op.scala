@@ -83,7 +83,7 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
 }
 class CtrlSignals extends Bundle()
 {
-    val br_type     = UInt(BR_N.getWidth.W)
+    val br_type     = UInt(BJP_N.getWidth.W)
     val op1_sel     = UInt(OP1_X.getWidth.W)
     val op2_sel     = UInt(OP2_X.getWidth.W)
     val imm_sel     = UInt(IS_X.getWidth.W)

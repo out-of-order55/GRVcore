@@ -63,7 +63,9 @@ object XDecode extends DecodeConstants
     XORI    -> List(Y, uopXORI , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
     SLTI    -> List(Y, uopSLTI , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
     SLTIU   -> List(Y, uopSLTIU, IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
-
+    SLLI    -> List(Y, uopSLLI , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
+    SRLI    -> List(Y, uopSRLI , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
+    SRAI    -> List(Y, uopSRAI , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_X  , IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
     SLL     -> List(Y, uopSLL  , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_FIX, IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
     ADD     -> List(Y, uopADD  , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_FIX, IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),
     SUB     -> List(Y, uopSUB  , IQT_INT, FU_ALU , RT_FIX, RT_FIX, RT_FIX, IS_I, N, N,N, N, N, M_X  , 1.U, Y, N, N, N, N, CSR.N),

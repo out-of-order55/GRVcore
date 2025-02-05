@@ -34,10 +34,11 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     stq.io.commit := io.commit
     stq.io.dis    <>io.dis
     stq.io.flush  := io.flush
-    val s0_replay= io.write.req.valid&&(!io.write.req.ready)//s0阶段dcache无法接受请求
+    // val s0_replay= io.write.req.valid&&(!io.write.req.ready)//s0阶段dcache无法接受请求
     val s0_replayMsg= WireInit(0.U.asTypeOf(new LSUReplay))
 
-    val s0_valid = io.req.valid&(!s0_replay)
+    val s0_valid = io.req.valid
+    // &(!s0_replay)
     
     val s0_waddr = Wire(UInt(XLEN.W))
     val s0_wdata = Wire(UInt(XLEN.W))
@@ -48,13 +49,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
                 Mux(s0_uop.mem_size===1.U,"b0011".U,"b1111".U))
     val s0_align_mask = s0_mask<<s0_offset
 
-    val s1_replay= RegNext(s0_replay)//目前没有replay的请求
+    // val s1_replay= RegNext(s0_replay)//目前没有replay的请求
     val s1_valid = RegNext(s0_valid&(!io.flush))
     val s1_waddr = RegNext(s0_waddr)
     val s1_uop   = RegNext(s0_uop)
 
 
-    val s2_replay= RegNext(s1_replay)
+    // val s2_replay= RegNext(s1_replay)
     val s2_fail  = WireInit(false.B)
     val s2_valid = RegNext(s1_valid&&(!io.flush))
     val s2_waddr = RegNext(s1_waddr)
@@ -62,8 +63,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     dontTouch(s2_valid)
     dontTouch(s2_uop)
     val dcache_replayMsg = WireInit(0.U.asTypeOf(new LSUReplay))
-    s0_replayMsg.replay := s0_replay
-    s0_replayMsg.uop    := s0_uop
+    // s0_replayMsg.replay := s0_replay
+    // s0_replayMsg.uop    := s0_uop
     s0_waddr := (io.req.bits.rs1_data.asSInt + io.req.bits.uop.imm_packed(19,8).asSInt).asUInt
     s0_wdata := io.req.bits.rs2_data
 //////////////////////////   stage0    //////////////////////////////
@@ -87,8 +88,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
 
     dcache_replayMsg.replay := io.write.resp.bits.replay&&(io.write.resp.valid)
     dcache_replayMsg.uop    := s2_uop
-    io.replay.replay := Mux(s0_replay,s0_replayMsg.replay,dcache_replayMsg.replay)
-    io.replay.uop    := Mux(s0_replay,s0_replayMsg.uop,dcache_replayMsg.uop)
+    io.replay.replay := dcache_replayMsg.replay
+    io.replay.uop    := dcache_replayMsg.uop
 //////////////////////////   WB_RESP    //////////////////////////////
     io.wb_resp.valid        := s2_valid
     io.wb_resp.bits.uop     := s2_uop

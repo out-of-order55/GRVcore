@@ -90,6 +90,9 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
         io.ifu.redirect_pc                := commit_flush.bits.epc
     }
 
+    for(i<- 0 until exe_units.size){
+        exe_units(i).io.flush := commit_flush.valid
+    }
     //
 ///////////////////////////////////DECODER///////////////////////////
     for(i <- 0 until coreWidth){
@@ -184,7 +187,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val stq_idx= WireInit(io.lsu.dis(0).enq_idx)
     val st_enq_ready = WireInit(VecInit(io.lsu.dis(0).enq.map(_.ready)))
     for(j <- 0 until stIssueParam.dispatchWidth){
-        st_uop(j).bits.ldq_idx := Mux(stq_idx(j).valid,stq_idx(j).bits,0.U)
+        st_uop(j).bits.stq_idx := Mux(stq_idx(j).valid,stq_idx(j).bits,0.U)
         st_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
         // st_iss_unit.io.fu_using(j) := mem_fu_types
         st_iss_unit.io.dis_uops(j).valid := st_uop(j).valid&rob_ready
@@ -413,7 +416,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val ld_wb_resp  = io.lsu.ld_wb_resp
     for(i<-intNumWriteports until intNumWriteports+memNumWriteports){
         val wbpdst = ld_wb_resp(i-intNumWriteports).bits.uop.pdst 
-        val wbwen  = ld_wb_resp(i-intNumWriteports).valid && int_wb_resp(i-intNumWriteports).bits.uop.ldst_val
+        val wbwen  = ld_wb_resp(i-intNumWriteports).valid && ld_wb_resp(i-intNumWriteports).bits.uop.ldst_val
         val wbdata = ld_wb_resp(i-intNumWriteports).bits.wb_data
         regfiles.io.writeports(i).addr := wbpdst
         regfiles.io.writeports(i).data := wbdata

@@ -130,7 +130,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val numEnq = PopCount(io.dis.enq.map{i=>i.valid&&i.bits.mem_cmd===M_XRD})
 
     val deq  = VecInit((0 until coreWidth).map{i=>
-        io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XRD
+        io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XRD&&io.commit.commit_uops(i).uses_ldq
     })
 
     val numDeq = PopCount(deq)
@@ -204,41 +204,48 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
 
 
 //////////////////////refill//////////////////////
-    val refillOH = ldq.map{ldq=>
+    val refill_sels = ldq.map{ldq=>
         BankAlign(ldq.addr)===io.refillMsg.refill_addr&&io.refillMsg.refilled
     }
     
     //refill的数据mask总是全为1
-    val refill_idx  = PriorityEncoder(refillOH)
-    val refill_bank =  (ldq(refill_idx).addr)(offsetWidth-1,bankWidth)
-    val refill_data = io.refillMsg.refillData(refill_bank)
-    val final_data  = Wire(UInt(XLEN.W))
-    val ldq_data = ldq(refill_idx).data
-    val ldq_mask = ldq(refill_idx).mask
 
-	val splitData = Wire(Vec(XLEN/8,UInt(8.W)))
-	//32 to 8
 
-    for(i<- 0 until XLEN/8){
-        splitData(i) := Mux(ldq_mask(i)===1.U,ldq_data((i+1)*8-1,i*8),refill_data((i+1)*8-1,i*8)) 
-    }
-	final_data := Cat(splitData.map(_.asUInt).reverse)
 							
-    ldq(refill_idx).flag.miss := Mux(io.refillMsg.refilled,false.B,ldq(refill_idx).flag.miss)
-    ldq(refill_idx).flag.datavalid := Mux(io.refillMsg.refilled,true.B,ldq(refill_idx).flag.datavalid)
-    ldq(refill_idx).data := Mux(io.refillMsg.refilled,final_data,ldq(refill_idx).data)
+    for(i<- 0 until numLDQs){
+        val refill_bank =  (ldq(i).addr)(offsetWidth-1,bankWidth)
+        val refill_data = io.refillMsg.refillData(refill_bank)
+        val final_data  = Wire(UInt(XLEN.W))
+        val ldq_data = ldq(i).data
+        val ldq_mask = ldq(i).mask
+
+        val splitData = Wire(Vec(XLEN/8,UInt(8.W)))
+        //32 to 8
+        
+        for(i<- 0 until XLEN/8){
+            splitData(i) := Mux(ldq_mask(i)===1.U,ldq_data((i+1)*8-1,i*8),refill_data((i+1)*8-1,i*8)) 
+        }
+        final_data := Cat(splitData.map(_.asUInt).reverse)
+        when(refill_sels(i)){
+            ldq(i).flag.miss := false.B
+            ldq(i).flag.datavalid :=true.B
+            ldq(i).data := final_data
+        }
+    }
+
 ////////////////////////////////////////
 
 ///////////////////wb//////////////////
-    val wb_sels  = VecInit(ldq.map{i=>i.flag.datavalid&(!i.flag.wb_valid)&(i.flag.allocated)})//只有datavalid&（！wbvalid）才说明这个是refill的load，正常的都是datavalid（wbvalid）同时拉高
-    val wb_selOH = SelectFirstN(wb_sels.asUInt,numReadport) 
+    val wb_sels_resp  = VecInit(ldq.map{i=>i.flag.datavalid&(!i.flag.wb_valid)&(i.flag.allocated)})//只有datavalid&（！wbvalid）才说明这个是refill的load，正常的都是datavalid（wbvalid）同时拉高
+    val wb_selOH = SelectFirstN(wb_sels_resp.asUInt,numReadport) 
 
     for(i <- 0 until numReadport){
         val wb_idx = PriorityEncoder(wb_selOH(i))
         val wb_valid = io.wb_resp(i).fire
         val wb_offset = ldq(wb_idx).addr(log2Ceil(XLEN/8)-1,0)
         val wb_data = ldq(wb_idx).data>>(8.U*wb_offset)
-        val wb_sels = Cat(ldq(wb_idx).uop.mem_signed.asUInt,ldq(wb_idx).uop.mem_size)
+        val wb_sels = WireInit(Cat(ldq(wb_idx).uop.mem_signed.asUInt,ldq(wb_idx).uop.mem_size))
+        dontTouch(wb_sels)
 
         io.wb_resp(i).valid    := ldq(wb_idx).flag.datavalid
         io.wb_resp(i).bits.uop := ldq(wb_idx).uop

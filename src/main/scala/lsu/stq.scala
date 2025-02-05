@@ -76,35 +76,44 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
         val mask = UInt((XLEN/8).W)
     }
     // val s_idle::s_allocated::s_datavalid::s_miss :: Nil = Enum(5)
-
+    val s_idle::s_normal::s_repair::Nil = Enum(3)
+    val stq_state = RegInit(s_idle)
     val stq = RegInit(VecInit.fill(numSTQs)(0.U.asTypeOf(new STQEntry)))
     val stq_enq_ptr  = RegInit(0.U(log2Ceil(numSTQs+1).W))
     val stq_deq_ptr  = RegInit(0.U(log2Ceil(numSTQs+1).W))
-
+    val stq_commit_ptr  = RegInit(0.U(log2Ceil(numSTQs+1).W))
     val numValid = PopCount(stq.map(_.flag.allocated))
     val ValidVec = stq.map{i=>i.flag.allocated&&i.flag.addrvalid&&i.flag.datavalid}
     val numEnq = PopCount(io.dis.enq.map{i=>i.valid&&i.bits.mem_cmd===M_XWR})
 
     
-    val commit_valid  = VecInit((0 until coreWidth).map{i=>
-        io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XWR
-    })
-    val commit_idx  = VecInit((0 until coreWidth).map{i=>
-        io.commit.commit_uops(i).stq_idx
-    })
+    dontTouch(stq_commit_ptr)
+    val can_commit = io.commit.valid zip io.commit.commit_uops map{case(vld,uop)=>
+        vld&&uop.mem_cmd===M_XWR
+    }
+    val commit_idxs = VecInit.tabulate(coreWidth)(i => PopCount(can_commit.take(i)))
+    val commit_offset = VecInit(commit_idxs.map(_+stq_commit_ptr(log2Ceil(numSTQs)-1,0)))
 
-    val numDeq = io.sb_req.fire
+    val deq_ptr_value = stq_deq_ptr(log2Ceil(numSTQs)-1,0)
+    dontTouch(deq_ptr_value)
+    val deq_valid = stq(deq_ptr_value).flag.commited
+
+
+    val flush = stq_state===s_repair&&(!deq_valid)||(io.flush&&(!deq_valid)&&(!can_commit.reduce(_||_)))
+
+
+    // val numDeq = io.sb_req.fire
     
     val enqNextPtr = stq_enq_ptr+numEnq
-	val deqNextPtr = stq_deq_ptr+numDeq.asUInt
+	// val deqNextPtr = stq_deq_ptr+numDeq.asUInt
     val full = (stq_enq_ptr(stqSz)=/=stq_deq_ptr(stqSz)&&(numEnq+stq_enq_ptr)(stqSz-1,0)>stq_deq_ptr(stqSz-1,0))||
     numValid===numSTQs.U
 	val empty = (stq_enq_ptr(stqSz)===stq_deq_ptr(stqSz))&&stq_enq_ptr(stqSz-1,0)===stq_deq_ptr(stqSz-1,0)
     
     io.dis.enq.foreach{dis=>
-        dis.ready := (!full)&(!io.flush)
+        dis.ready := (!full)&(stq_state=/=s_repair)
     }
-    when(io.flush){
+    when(flush){
         stq_enq_ptr := 0.U
     }
     .elsewhen(numEnq.orR){
@@ -115,7 +124,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val enq_offset = VecInit(enq_idxs.map(_+stq_enq_ptr(stqSz-1,0)))
     dontTouch(enq_idxs)
     dontTouch(enq_offset)
-    when(io.flush){
+    when(flush){
         for(i <- 0 until numSTQs){
             stq(i).flag := 0.U.asTypeOf(new STQFlag)
         }
@@ -177,28 +186,45 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     
     
 ///////////////////////////    commit     //////////////////////////////
-    for(i<- 0 until coreWidth){
-        val commit_idx   = io.commit.commit_uops(i).stq_idx(log2Ceil(numSTQs)-1,0)
-        val commit_valid = io.commit.valid(i)&&io.commit.commit_uops(i).mem_cmd===M_XWR
-        when(commit_valid){
-            stq(commit_idx).flag.commited := true.B
-        }
-        //  Mux(commit_valid,true.B,stq(commit_idx).flag.commited)
-    }
 
+    dontTouch(commit_offset)
+    for(i<- 0 until coreWidth){
+        when(can_commit(i)){
+            stq(commit_offset(i)).flag.commited := true.B
+        }
+    }
+    when(flush){
+        stq_commit_ptr := 0.U
+    }.elsewhen(can_commit.reduce(_||_)){
+        stq_commit_ptr := stq_commit_ptr + PopCount(can_commit)
+    }
 ///////////////////////////TO STORE BUFFER//////////////////////////////
-    val deq_ptr_value = stq_deq_ptr(log2Ceil(numSTQs)-1,0)
-    dontTouch(deq_ptr_value)
-    io.sb_req.valid := stq(deq_ptr_value).flag.commited
+
+
+    io.sb_req.valid := deq_valid
     val can_go = io.sb_req.fire
     dontTouch(can_go)
     when(can_go){
         stq(deq_ptr_value).flag := 0.U.asTypeOf(new STQFlag)
     }
-    
+	switch (stq_state){
+		is(s_idle){
+			stq_state := s_normal
+		}
+        is(s_normal){
+            when(io.flush&&(deq_valid||can_commit.reduce(_||_))){
+                stq_state := s_repair
+            }
+        }
+        is(s_repair){
+            when(!deq_valid){
+                stq_state := s_normal
+            }
+        }
+    }
     io.sb_req.bits.addr := stq(deq_ptr_value).addr
     io.sb_req.bits.data := stq(deq_ptr_value).data
     io.sb_req.bits.mask := stq(deq_ptr_value).mask
     io.sb_req.bits.uop  := stq(deq_ptr_value).uop
-    stq_deq_ptr := Mux(io.flush,0.U,Mux(can_go,stq_deq_ptr+1.U,stq_deq_ptr))
+    stq_deq_ptr := Mux(flush,0.U,Mux(can_go,stq_deq_ptr+1.U,stq_deq_ptr))
 }

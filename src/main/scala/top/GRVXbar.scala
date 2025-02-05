@@ -92,14 +92,10 @@ class   GRVXbar(
         dontTouch(brust_enable)
         dontTouch(block_reg)
         dontTouch(in)
-        when(block_idx<(in.size).U){
+        when(block_idx_reg<(in.size).U){
             when(in(block_idx_reg).b.fire&&block_reg(block_idx_reg)){
                 block_reg(block_idx_reg) := false.B
                 block_idx_reg := 0.U
-            }
-            .elsewhen(in(block_idx).aw.fire&&block(block_idx)){
-                block_reg(block_idx) := true.B
-                block_idx_reg := block_idx
             }
         }.otherwise{
             when(in(block_idx_reg).r.fire&&(!brust_enable)&&block_reg(block_idx_reg)){
@@ -110,7 +106,15 @@ class   GRVXbar(
                 brust_enable := false.B
                 block_idx_reg := 0.U
             }
-            .elsewhen(in(block_idx).ar.fire&&block(block_idx)){
+        }
+        //porblem
+        when(block_idx<(in.size).U){
+            when(in(block_idx).aw.fire&&block(block_idx)){
+                block_reg(block_idx) := true.B
+                block_idx_reg := block_idx
+            }
+        }.otherwise{
+            when(in(block_idx).ar.fire&&block(block_idx)){
                 block_reg(block_idx) := true.B
                 brust_enable := brust_vec(block_idx)
                 block_idx_reg := block_idx
@@ -185,7 +189,7 @@ class   GRVXbar(
             dontTouch(block_ar)
             in(i).ar.valid := io_in(i).ar.valid && allowAR&&block_ar
             
-            io_in(i).ar.ready := in(i).ar.ready && allowAR
+            io_in(i).ar.ready := in(i).ar.ready && allowAR&&block_ar
 
             // Keep in mind that slaves may do this: awready := wvalid, wready := awvalid
             // To not cause a loop, we cannot have: wvalid := awready
@@ -194,7 +198,7 @@ class   GRVXbar(
             val allowAW = awFIFOMap(io_in(i).aw.bits.id)
             val latched = RegInit(false.B) // cut awIn(i).enq.valid from awready
             in(i).aw.valid := io_in(i).aw.valid && (latched || awIn(i).io.enq.ready) && allowAW&&(block(i)&&(!block_reg.reduce(_||_))||block_reg(i))
-            io_in(i).aw.ready := in(i).aw.ready && (latched || awIn(i).io.enq.ready) && allowAW
+            io_in(i).aw.ready := in(i).aw.ready && (latched || awIn(i).io.enq.ready) && allowAW&&(block(i)&&(!block_reg.reduce(_||_))||block_reg(i))
             awIn(i).io.enq.valid := io_in(i).aw.valid && !latched
             when (awIn(i).io.enq.fire) { latched := true.B }
             when (in(i).aw.fire) { latched := false.B }
@@ -207,7 +211,9 @@ class   GRVXbar(
             val block_ar = WireInit(block(i+io_in.size)&&(!block_reg.reduce(_||_))||block_reg(i+io_in.size))
             dontTouch(block_ar)
             in(i).ar.valid := io_in(i).ar.valid &&block_ar
+            io_in(i).ar.ready := in(i).ar.ready &&block_ar
             in(i).aw.valid := io_in(i).aw.valid &&(block(i)&&(!block_reg.reduce(_||_))||block_reg(i))
+            io_in(i).aw.ready := in(i).aw.ready &&(block(i)&&(!block_reg.reduce(_||_))||block_reg(i))
             awIn(i).io := DontCare // aw in queue is not used when outsize == 1
         }
     }
@@ -266,9 +272,9 @@ class   GRVXbar(
 
         for (i <- 0 until in.size) {
             in(i).r.bits  := Mux1H(respRIO(i),out.map(_.r.bits))
-            in(i).r.valid  := Mux1H(respRIO(i),out.map(_.r.valid))
+            in(i).r.valid  := Mux1H(respRIO(i),out.map(_.r.valid))&block_reg(i+in.size)
             in(i).b.bits  := Mux1H(respBIO(i),out.map(_.b.bits))
-            in(i).b.valid  := Mux1H(respBIO(i),out.map(_.b.valid))
+            in(i).b.valid  := Mux1H(respBIO(i),out.map(_.b.valid))&block_reg(i)
         }
     }
 }

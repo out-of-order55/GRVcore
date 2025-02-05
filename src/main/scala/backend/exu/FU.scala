@@ -86,7 +86,7 @@ extends FunctionalUnit(
     alu.io.fn  := uop.ctrl.op_fcn
     alu.io.dw  := uop.ctrl.fcn_dw
 
-    io.resp.valid := io.req.fire
+    io.resp.valid := io.req.fire&&(!killed)
     io.resp.bits.wb_data := alu.io.out
 }
 
@@ -100,7 +100,7 @@ extends FunctionalUnit(
     io.req.ready:= true.B
 
 
-    io.resp.valid := io.req.fire
+    io.resp.valid := io.req.fire&&(!killed)
     io.resp.bits.uop := io.req.bits.uop
     io.resp.bits.wb_data := 0.U
 }
@@ -121,7 +121,7 @@ extends FunctionalUnit(
     val br_ltu = (rs1.asUInt < rs2.asUInt)
     val br_lt  = (~(rs1(XLEN-1) ^ rs2(XLEN-1)) & br_ltu |
                     rs1(XLEN-1) & ~rs2(XLEN-1)).asBool
-
+    dontTouch(br_lt)
     val pc_sel = MuxLookup(uop.ctrl.br_type, PC_PLUS4)(
                     Seq(    BJP_N   -> PC_PLUS4,
                             BJP_NE  -> Mux(!br_eq,  PC_BRJMP, PC_PLUS4),
@@ -164,7 +164,7 @@ extends FunctionalUnit(
     val target_offset = imm_xprlen(20,0).asSInt
 
 
-    val target_base = Mux(uop.ctrl.br_type===BJP_J||uop.ctrl.br_type===BJP_JR,op1_data.asSInt,uop_pc.asSInt)
+    val target_base = Mux(uop.ctrl.br_type===BJP_JR,io.req.bits.rs1_data.asSInt,uop_pc.asSInt)
     val target_XLEN = Wire(UInt(XLEN.W))
     target_XLEN := (target_base + target_offset).asUInt
     
@@ -191,10 +191,10 @@ extends FunctionalUnit(
     brinfo.is_jalr          := is_jalr
     brinfo.target           := target_XLEN
 
-    io.brinfo.valid:= (io.req.fire)&&(uop.uopc=/=uopAUIPC)
+    io.brinfo.valid:= (io.req.fire)&&(uop.uopc=/=uopAUIPC)&&(!killed)
     io.brinfo.bits := brinfo
 
-    io.resp.valid := io.req.fire
+    io.resp.valid := io.req.fire&&(!killed)
     io.resp.bits.wb_data := Mux(uop.uopc===uopAUIPC,op1_data+op2_data,op1_data+4.U)
 }
 //rocketchip 的面积为14000左右
@@ -221,7 +221,7 @@ extends FunctionalUnit(
 
 
     // response
-    io.resp.valid        := uops(numStages-1).valid
+    io.resp.valid        := uops(numStages-1).valid&&(!killed)
     io.resp.bits.uop     := uops(numStages-1).bits
     io.resp.bits.wb_data    := imul.io.resp.bits.data
 

@@ -110,7 +110,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         ldq.io.search_resp(i).valid := bypass_en(i) 
     }
     // dontTouch(bypassMsg)
-    // dontTouch(bypass_en)
+    dontTouch(bypass_en)
     for(i <- 0 until coreWidth){
         io.dis.enq(i).ready     := ldq.io.dis.enq(i).ready&&(!io.flush)
         io.dis.enq_idx(i)       := ldq.io.dis.enq_idx(i)
@@ -173,7 +173,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
                             Mux(stq_valid,stq_mask,sb_mask))
         bypassMsg(i).data:= Cat(bypass_splitData(i).map(_.asUInt).reverse)
         for(j<- 0 until XLEN/8){
-            bypass_splitData(i)(j) := Mux(stq_mask(j)===1.U,stq_data((j+1)*8-1,j*8),sb_data((j+1)*8-1,j*8)) 
+            bypass_splitData(i)(j) := Mux(stq_mask(j)===1.U&&stq_valid,stq_data((j+1)*8-1,j*8),sb_data((j+1)*8-1,j*8)) 
         }
         bypass_en(i) := stq_resp(i).valid||sb_resp(i).valid
         
@@ -187,7 +187,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         val bypass_data = bypassMsg(i).data
         val dcache_data = s2_dcache_resp(i).data
         for(j<- 0 until XLEN/8){
-            splitData(i)(j) := Mux(bypass_mask(j)===1.U,bypass_data((j+1)*8-1,j*8),dcache_data((j+1)*8-1,j*8)) 
+            splitData(i)(j) := Mux(bypass_mask(j)===1.U&&bypass_en(i),bypass_data((j+1)*8-1,j*8),dcache_data((j+1)*8-1,j*8)) 
         }
         val wb_offset = s2_raddr(i)(log2Ceil(XLEN/8)-1,0)
         val wb_data = Cat(splitData(i).map(_.asUInt).reverse)>>(8.U*wb_offset)

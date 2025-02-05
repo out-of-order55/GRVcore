@@ -58,12 +58,12 @@ trait HasDCacheParameters extends HasGRVParameters{
 		val DataLookupTable = Seq(
 		"b000".U -> Cat(Fill(XLEN-8,0.U),rdata(7, 0)),
 		"b001".U -> Cat(Fill(XLEN-16,0.U),rdata(15, 0)),
-		"b010".U -> rdata(31, 0),
+		"b110".U -> rdata(31, 0),
 		"b100".U -> Cat(Fill(XLEN-8,rdata(7)),rdata(7, 0)),
 		"b101".U -> Cat(Fill(XLEN-16,rdata(7)),rdata(15, 0))	 
 
 		)
-		MuxLookup(select,0.U)(DataLookupTable)
+		MuxLookup(select,"hbadc0de".U)(DataLookupTable)
 	}
 	def BankAlign(addr:UInt):UInt={
 		(addr>>offsetWidth)<<offsetWidth
@@ -174,7 +174,10 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
     //write
 
 
-
+//如果write和read缺失，该如何解决？
+	// val write_read_miss = (1 until numReadport).map{
+	// 	io.missmsg(0).addr
+	// }
     for(i <- 0 until numReadport){
 		val miss_same =(0 until i).foldLeft(false.B) ((p,k) =>
             io.missmsg(i).addr===io.missmsg(k).addr||p)
@@ -266,7 +269,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	val awvalid 	= RegInit(false.B)
 	val wvalid 		= RegInit(false.B)
 	val bready 		= RegInit(false.B)
-	val wdata	    = RegInit(replaceEntry.data)
+	// val wdata	    = RegInit(replaceEntry.data)
 	io.master.r.ready := rready
 	io.master.ar.valid:= arvalid
 	io.master.aw.valid:= awvalid
@@ -338,7 +341,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	}
 	
 	when(state===s_replace_req&&state_n===s_replace_wait_ack||(state===s_replace_wait_ack&&io.master.w.fire)){
-		io.master.w.bits.data := wdata(wcnt)
+		io.master.w.bits.data := replaceEntry.data(wcnt)
 	}
 	awvalid := Mux(state===s_replace_req&state_n===s_replace_wait_ack,true.B,Mux(aw_fire,false.B,awvalid))
 	wvalid  := Mux(state===s_replace_req&state_n===s_replace_wait_ack,true.B,Mux(w_fire&&state_n===s_replace_end,false.B,wvalid))
@@ -349,7 +352,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 
 /////////////////////////////////////////////////////
 
-	state := state_n
+	state := Mux(io.flush,s_normal,state_n)
 
 	switch (state){
 		is(s_reset){
@@ -517,9 +520,10 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		}
 	}
 
-	val s1_redata = s1_data.map{i=>
+	val s1_final_wdata = WireInit(VecInit(s1_data.map{i=>
 								Cat(i.map(_.asUInt).reverse)
-	}
+	}))
+	dontTouch(s1_final_wdata)
 	val s2_rvalid  		= RegNext(VecInit(s1_rvalid.map{i=>i&(!io.flush)}))
 	val s2_wvalid 		= RegNext(s1_wvalid&(!io.flush))
 	val s2_whit 		= RegNext(s1_whit)
@@ -584,7 +588,10 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	dontTouch(rtag)
 	for(i <- 0 until numReadport){
 		when(i.U===0.U){
-			s1_missMsg(i).mask := s1_wmask
+			for(j <- 0 until bankNum){
+				s1_missMsg(i).mask(j) := Mux(s1_rvalid(i),0.U,s1_wmask(j))
+			}
+			
 			s1_missMsg(i).data := s1_wdata
 			s1_missMsg(i).memtype := s1_rvalid(i)
 			s1_missMsg(i).addr := Mux(s1_wvalid,Cat(s1_wmsg.bits.tag,s1_wmsg.bits.index)<<offsetWidth,Cat(s1_rmsg(0).bits.tag,s1_rmsg(0).bits.index)<<offsetWidth)
@@ -626,11 +633,11 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 							Mux(s0_wvalid,s0_wmsg.bits.index,s0_rmsg(j).bits.index)))
 			val enable  = refilled||(s0_wvalid||s0_rvalid.reduce(_||_))||replaced
 			val write	= refilled&&(i.U===refillWay)
-			val WData 	= refillMsg.tag
+			// val w_data 	= refillMsg.tag
 			tag(i)(j).io.enable := enable
 			tag(i)(j).io.addr   := tag_idx
 			tag(i)(j).io.write  := write 
-			tag(i)(j).io.dataIn := WData
+			tag(i)(j).io.dataIn := refillMsg.tag
 			rtag(i)(j)  		:= tag(i)(j).io.dataOut
 			rvalid(i)(j)		:= valid(i)(j)(tag_idx)
 
@@ -650,14 +657,14 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			val s0_ridx = Mux1H(s0_renOH,s0_rmsg.map(_.bits.index))
 			val data_idx = Mux(refilled,refillMsg.index,
 							Mux(replaced,replaceMsg.idx,
-							Mux(s0_wvalid,s0_wmsg.bits.index,s0_ridx)))
-			val enable  = refilled||(s0_wvalid||(s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced
+							Mux(s1_wvalid,s1_wmsg.bits.index,s0_ridx)))
+			val enable  = refilled||((s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced
 			val write	= refilled&&(i.U===refillWay)||s1_wvalid&&s1_whit(i)
-			val WData 	= Mux(refilled,refillData(j),s1_redata(j))
+			val w_data 	= Mux(refilled,refillData(j),s1_final_wdata(j))
 			data(i)(j).io.enable := enable
 			data(i)(j).io.addr   := data_idx
 			data(i)(j).io.write  := write
-			data(i)(j).io.dataIn := WData
+			data(i)(j).io.dataIn := w_data
 			for(k <- 0 until numReadport){
 				rdata(k)(i)(j)       := data(i)(j).io.dataOut
 			}
@@ -665,18 +672,19 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	}
 	dontTouch(rdata)
 ///////////////////////////////Meta//////////////////////////////
+//目前这个写逻辑有问题，只有当写数据，或者写miss才会设定dirty位，读miss读出的数据是不会设置dirty位的，但目前不影响功能
 	for( i <- 0 until meta.length){
 		for(j  <- 0 until meta.head.length){
 			val meta_idx = Mux(refilled,refillMsg.index,
 							Mux(replaced,replaceMsg.idx,
-							Mux(s0_wvalid,s0_wmsg.bits.index,s0_rmsg(j).bits.index)))
-			val enable  = refilled||(s0_wvalid||s0_rvalid.reduce(_||_))||replaced
-			val write	= refilled&&(i.U===refillWay)
-			val WData 	= refilled
+							Mux(s1_wvalid,s1_wmsg.bits.index,s0_rmsg(j).bits.index)))
+			val enable  = refilled||(s1_wvalid||s0_rvalid.reduce(_||_))||replaced
+			val write	= refilled&&(i.U===refillWay)||s1_wvalid&&s1_whit(i)
+			val w_meta 	= refilled||s1_wvalid&&s1_whit(i)
 			meta(i)(j).io.enable := enable
 			meta(i)(j).io.addr   := meta_idx
 			meta(i)(j).io.write  := write 
-			meta(i)(j).io.dataIn.dirty := WData
+			meta(i)(j).io.dataIn.dirty := w_meta
 			rmeta(i)(j)  		:= meta(i)(j).io.dataOut
 			
 		}
