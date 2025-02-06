@@ -226,7 +226,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
             splitData(i) := Mux(ldq_mask(i)===1.U,ldq_data((i+1)*8-1,i*8),refill_data((i+1)*8-1,i*8)) 
         }
         final_data := Cat(splitData.map(_.asUInt).reverse)
-        when(refill_sels(i)){
+        when(refill_sels(i)&&(ldq(i).flag.allocated)){
             ldq(i).flag.miss := false.B
             ldq(i).flag.datavalid :=true.B
             ldq(i).data := final_data

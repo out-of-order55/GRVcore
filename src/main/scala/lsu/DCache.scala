@@ -210,14 +210,14 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
         }
     }
 
-	when(io.flush){
-		mshr_enq_ptr := 0.U
-		mshr_deq_ptr := 0.U
-		mshrs.foreach{i=>
-			i.valid:=false.B	
-		}
-	}
-	.elsewhen(req.reduce(_||_)){
+	// when(io.flush){
+	// 	mshr_enq_ptr := 0.U
+	// 	mshr_deq_ptr := 0.U
+	// 	mshrs.foreach{i=>
+	// 		i.valid:=false.B	
+	// 	}
+	// }
+	when(req.reduce(_||_)){
 		mshr_enq_ptr := enq_next_ptr
 	}
 	when(io.refill.fire){
@@ -352,7 +352,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 
 /////////////////////////////////////////////////////
 
-	state := Mux(io.flush,s_normal,state_n)
+	state := state_n
 
 	switch (state){
 		is(s_reset){

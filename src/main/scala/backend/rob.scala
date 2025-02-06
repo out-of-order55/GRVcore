@@ -23,6 +23,7 @@ class CommitMsg(implicit p: Parameters) extends GRVBundle{
 class CommitExcMsg(implicit p: Parameters) extends GRVBundle{
 
     val ftq_idx    = UInt(log2Ceil(ftqentries).W)
+    val rob_idx    = UInt(log2Ceil(ROBEntry+1).W)
     val pc_lob     = UInt(log2Ceil(ICacheParam.blockBytes).W)
     val cause      = UInt(32.W)
     val epc        = UInt(XLEN.W)//for mispred
@@ -42,8 +43,8 @@ class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
     val enq_idxs    = Output(Vec(coreWidth,Valid(UInt(log2Ceil(ROBEntry+1).W))))
     val wb_resp     = Flipped(Vec(numWakeupPorts, Valid(new ExuResp)))
 
-    val lsuexc      = Flipped(Valid(new Exception))
-    val br_info     =  Flipped(Valid(new BrUpdateInfo))
+    val lsu_exc     = Flipped(Valid(new Exception))
+    val br_info     = Flipped(Valid(new BrUpdateInfo))
 
 
     val br_update   = Valid(new BrUpdateInfo)
@@ -111,7 +112,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val rob_deq_mask= GetPtrMask(rob_deq_ptr,RobbankSz)
     dontTouch(rob_enq_mask)
     //enq
-    val enqInfo     = WireInit(io.enq)
+    val enq_info     = WireInit(io.enq)
     val br_info     = WireInit(io.br_info)
     val flush       = WireInit(false.B)
     val is_exc_inst_commit = WireInit(false.B)
@@ -119,6 +120,24 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
 
     val deq_vld_mask    = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=> i(rob_deq_val).valid}).asUInt))
     val deq_finish_mask = WireInit(UInt(log2Ceil(ICacheParam.blockBytes).W),(VecInit(rob_entry.map{i=>i(rob_deq_val).finish&&i(rob_deq_val).valid}).asUInt))
+    
+    val exc_msg = WireInit(0.U.asTypeOf(Valid(new CommitExcMsg)))
+
+
+    //异常信息必须和之前的比较谁旧
+    val commit_exc_msg   = RegInit(0.U.asTypeOf(Valid(new CommitExcMsg)))
+    val is_exc_older  = (!commit_exc_msg.valid)&&((!br_update.valid)||
+                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx))||
+                        (commit_exc_msg.valid&&io.lsu_exc.valid&&isOlder(io.lsu_exc.bits.uops.rob_idx,commit_exc_msg.bits.rob_idx)&&
+                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx))
+    
+    exc_msg.valid           := io.lsu_exc.valid&&is_exc_older
+    exc_msg.bits.ftq_idx    := io.lsu_exc.bits.uops.ftq_idx
+    exc_msg.bits.rob_idx    := io.lsu_exc.bits.uops.rob_idx
+    exc_msg.bits.pc_lob     := io.lsu_exc.bits.uops.pc_off
+    exc_msg.bits.cause      := 0.U
+    exc_msg.bits.epc        := 0.U
+    exc_msg.bits.flush_typ  := FLUSH_REFETCH
     /* 
     可以提交的情况：
     1.无异常，此时只要finfish的个数等于vld的个数，就说明可以提交
@@ -146,9 +165,13 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     io.flush := DontCare
     io.flush.valid := false.B
     
-    val is_flush_older = (!br_update.valid)||
-                        (br_update.valid&&isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx)) 
+    val is_flush_older = (!br_update.valid)&&(!commit_exc_msg.valid)||
+                        (!br_update.valid)&&isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx)||
+                        (br_update.valid&&isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx)&&
+                        isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx)) 
     flush := br_info.bits.cfi_mispredicted&&br_info.valid&&is_flush_older
+
+
     dontTouch(do_enq)
     dontTouch(rob_deq_val)
     dontTouch(is_flush_older)
@@ -156,24 +179,27 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val enq_offset  = VecInit(enq_idxs.map(_+rob_enq_val))
     assert(PopCount(do_enq)===0.U||PopCount(do_enq)===coreWidth.U,"rob enq not fully")
     for(i <- 0 until coreWidth){
-
-        
         //enq
         when(do_enq(i)){
             // rob_entry(i)(rob_enq_val).finish := false.B
-            rob_entry(i)(rob_enq_val).valid := enqInfo.uops(i).valid
-            rob_entry(i)(rob_enq_val).uop   := enqInfo.uops(i).bits
+            rob_entry(i)(rob_enq_val).valid := enq_info.uops(i).valid
+            rob_entry(i)(rob_enq_val).uop   := enq_info.uops(i).bits
             io.enq_idxs(i).bits := Cat(rob_enq_mask,(rob_enq_val<<log2Ceil(coreWidth)) + i.U)
             io.enq_idxs(i).valid:= true.B
         }
         
         //deq
         when(can_commit){
+            val deq_rob_idx = WireInit(UInt(log2Ceil(ROBEntry+1).W),Cat(rob_deq_ptr,i.U))
+            dontTouch(deq_rob_idx)
             rob_entry(i)(rob_deq_val).valid  := false.B
             rob_entry(i)(rob_deq_val).finish := false.B
             rob_entry(i)(rob_deq_val).flush  := false.B
             io.commit.valid := true.B
-            io.commit.bits.valid(i) := Mux(is_exc_oldest,is_commit_flush(i),rob_entry(i)(rob_deq_val).valid)
+            io.commit.bits.valid(i) := Mux(is_exc_oldest,
+            Mux(io.flush.bits.flush_typ===FLUSH_REFETCH,
+            is_commit_flush(i)&&(io.flush.bits.rob_idx=/=deq_rob_idx),is_commit_flush(i))
+            ,rob_entry(i)(rob_deq_val).valid)
             io.commit.bits.commit_uops(i):=rob_entry(i)(rob_deq_val).uop
             //由于采用提交处理各种异常，所以commit的信号内包含的信号flush不用再次包含
         }
@@ -189,8 +215,11 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         for(i <- 0 until coreWidth){
             rob_entry(i)(br_miss_row).flush := Mux(br_miss_bank===i.U,true.B,false.B)
         }
-        
-        // rob_entry(br_miss_bank)(br_miss_row).uop   := br_info.bits.uop
+    }
+    val exc_bank = GetBankIdx((exc_msg.bits.rob_idx))
+    val exc_row  = GetRowIdx((exc_msg.bits.rob_idx))
+    when(exc_msg.valid){
+        rob_entry(exc_bank)(exc_row).flush := true.B
     }
     for(i<-0 until numWakeupPorts){
         val wb_rob_bank = GetBankIdx(io.wb_resp(i).bits.uop.rob_idx)
@@ -206,6 +235,11 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         }
     }
 
+    when(is_exc_oldest){
+        commit_exc_msg.valid := false.B
+    }.elsewhen(exc_msg.valid){
+        commit_exc_msg := exc_msg
+    }
     //指针更新逻辑
     when(is_exc_oldest){
         rob_enq_ptr := 0.U
@@ -240,10 +274,15 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         }
     }
     when(is_exc_oldest){
-        io.flush.valid := true.B
-        io.flush.bits.cause := 0.U
-        io.flush.bits.flush_typ := 0.U
-        io.flush.bits.epc   := br_update.bits.target
+        io.flush.valid           := true.B
+        io.flush.bits.cause      := 0.U                     
+        io.flush.bits.flush_typ  := Mux(commit_exc_msg.valid,commit_exc_msg.bits.flush_typ,FLUSH_MISPRED)                     
+        io.flush.bits.ftq_idx    := Mux(commit_exc_msg.valid,commit_exc_msg.bits.ftq_idx,0.U)  
+        io.flush.bits.rob_idx    := Mux(commit_exc_msg.valid,commit_exc_msg.bits.rob_idx,0.U)  
+        io.flush.bits.pc_lob     := Mux(commit_exc_msg.valid,commit_exc_msg.bits.pc_lob,0.U)   
+        io.flush.bits.cause      := Mux(commit_exc_msg.valid,commit_exc_msg.bits.cause,0.U)    
+        io.flush.bits.epc        := Mux(commit_exc_msg.valid,commit_exc_msg.bits.epc,br_update.bits.target)      
+        // io.flush.bits.flush_typ  := Mux(commit_exc_msg.valid,commit_exc_msg.bits.flush_typ,)
 
     }
     dontTouch(io.flush)
@@ -254,7 +293,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
 			rob_state := s_normal
 		}
         is(s_normal){
-            when(flush){
+            when(flush||exc_msg.valid){
                 rob_state := s_wait_repair
             }
         }

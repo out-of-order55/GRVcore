@@ -65,8 +65,6 @@ class GetPCFromFtqIO(implicit p: Parameters) extends GRVBundle
     val pc        = Output(UInt(XLEN.W))
     val next_pc   = Output(UInt(XLEN.W))
     val next_pc_val=Output(Bool())
-
-
 }
 
 //我们只在commit阶段处理异常
@@ -83,7 +81,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 
         // val commit = Input(new CommitMsg)
         //分支指令执行阶段
-        val get_ftq_pc = new GetPCFromFtqIO()
+        val get_ftq_pc = Vec(2,new GetPCFromFtqIO())
         //分支预测重定向：commit阶段
         val redirect = Input(Bool())//
         val brupdate = Flipped(Valid(new BrUpdateInfo))
@@ -201,10 +199,13 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
     }
 
 /////////////////////backend get pc///////////////
-    val get_ftq_idx= io.get_ftq_pc.ftq_idx
-///如果issue指令为br，则在issue读，ex阶段出结果
-    io.get_ftq_pc.entry  := (brInfo(get_ftq_idx))
-    io.get_ftq_pc.pc     := (pcs(get_ftq_idx))
-    io.get_ftq_pc.next_pc:= (pcs(get_ftq_idx+1.U))
-    io.get_ftq_pc.next_pc_val:=(get_ftq_idx+1.U=/=enq_ptr||do_enq)
+    for(i<- 0 until 2){
+        val get_ftq_idx= io.get_ftq_pc(i).ftq_idx
+    ///如果issue指令为br，则在issue读，ex阶段出结果
+        io.get_ftq_pc(i).entry  := (brInfo(get_ftq_idx))
+        io.get_ftq_pc(i).pc     := (pcs(get_ftq_idx))
+        io.get_ftq_pc(i).next_pc:= (pcs(get_ftq_idx+1.U))
+        io.get_ftq_pc(i).next_pc_val:=(get_ftq_idx+1.U=/=enq_ptr||do_enq)
+    }
+
 }

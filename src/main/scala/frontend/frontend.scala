@@ -39,7 +39,7 @@ class FetchBundle(implicit p: Parameters) extends GRVBundle with HasFrontendPara
 
 class FrontendIO(implicit p: Parameters) extends GRVBundle with HasFrontendParameters{
     val fetchpacket       = Flipped(new DecoupledIO(new IQueueResp))
-    val get_pc            = Flipped(new GetPCFromFtqIO())
+    val get_pc            = Flipped(Vec(2,new GetPCFromFtqIO()))
 
 
     //后端重定向

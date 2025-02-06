@@ -30,7 +30,7 @@ class WakeupPort(implicit p: Parameters) extends GRVBundle{
     val delay = UInt(Delay_Sz.W)
     val pdst  = UInt(pregSz.W)
 }
-class IssueEntryIO(val numWakeupPorts: Int)(implicit p: Parameters) extends GRVBundle{
+class IssueEntryIO(val numWakeupPorts: Int,val HasReplay:Boolean=false,val replayPort:Int)(implicit p: Parameters) extends GRVBundle{
 
     val flush       = Input(Bool())
     //ready
@@ -43,7 +43,9 @@ class IssueEntryIO(val numWakeupPorts: Int)(implicit p: Parameters) extends GRVB
     //wake up
     val wakeup      = Input(Vec(numWakeupPorts,new WakeupPort))
     
-    
+    val commit      = if(HasReplay)Input(new CommitMsg) else null
+    val replay      = if(HasReplay)Input(Vec(replayPort,new LSUReplay)) else null
+
     val out_uop     = Output(Valid(new MicroOp))
     //to exu
     val ex_uop      = Output(Valid(new MicroOp))
@@ -52,17 +54,20 @@ class IssueIO(
 val issueWidth:Int,
 val numEntries:Int,
 val numWakeupPorts: Int,
-val dispatchWidth:Int)(implicit p: Parameters)extends GRVBundle{
+val dispatchWidth:Int,
+val replayPort:Int,
+val HasReplay:Boolean= false)(implicit p: Parameters)extends GRVBundle{
     val dis_uops    = Flipped((Vec(dispatchWidth,Decoupled(new MicroOp))))
     val issue_uops  = (Vec(issueWidth,Decoupled(new MicroOp)))
-
+    val commit      = if(HasReplay)Input(new CommitMsg) else null
+    val replay      = if(HasReplay)Input(Vec(replayPort,new LSUReplay)) else null
     val fu_using    = Input(Vec(issueWidth,UInt(FUC_SZ.W)))//for unpipeline:DIV 
     
     val wakeup      = Input(Vec(numWakeupPorts,new WakeupPort()))
     val flush       = Input(Bool())
 }
 class IssueEntry(val numWakeupPorts: Int)(implicit p: Parameters) extends  GRVModule{
-    val io = IO(new IssueEntryIO(numWakeupPorts))
+    val io = IO(new IssueEntryIO(numWakeupPorts,false,1))
 
     val entry = RegInit(0.U.asTypeOf(Valid(new MicroOp)))
     
@@ -137,6 +142,138 @@ class IssueEntry(val numWakeupPorts: Int)(implicit p: Parameters) extends  GRVMo
 
 }
 
+class ReplayIssueEntry(val numWakeupPorts: Int,val replayPort:Int,val HasReplay:Boolean= false)(implicit p: Parameters) extends  GRVModule{
+    val io = IO(new IssueEntryIO(numWakeupPorts,HasReplay,replayPort))
+    class IssueFlag extends Bundle{
+        val allocated = Bool()
+        val issued    =  Bool() 
+
+        val rs1_bsy         = Bool()
+        val rs2_bsy         = Bool()
+        val rs1_wait        = Bool()
+        val rs2_wait        = Bool()
+        val rs1_delay       = UInt(Delay_Sz.W)
+        val rs2_delay       = UInt(Delay_Sz.W)
+    }
+    class Entry extends Bundle{
+        val uop = new MicroOp
+        val flag= new IssueFlag
+        def can_iss = if(HasReplay){(!flag.rs1_bsy)&&(!flag.rs2_bsy)&&(flag.allocated)&&(!flag.issued)}
+                    else{
+                        (!flag.rs1_bsy)&&(!flag.rs2_bsy)&&(flag.allocated)
+                    }
+    } 
+    val entry = RegInit(0.U.asTypeOf((new Entry)))
+    
+    //enq 
+    //当有入队的valid信号，表示一定为空或者有要出队的
+    //本周期entry无效或者本周期指令有效，但是已经被仲裁电路选中
+    //这个信号是为了显示本entry是否为空
+    val can_allocate = if(HasReplay){
+                            (!entry.flag.allocated)
+                        }
+                        else{
+                            ((entry.flag.allocated&&io.grant)||(!entry.flag.allocated))
+                        }
+    if(HasReplay){
+        val can_commit = (io.commit.valid zip io.commit.commit_uops).map{case(vld,uop)=>
+            vld&&uop.rob_idx===entry.uop.rob_idx&&entry.flag.allocated
+        }.reduce(_||_)
+        val replay     =  io.replay.map{rpy=>
+            rpy.replay&&rpy.uop.rob_idx===entry.uop.rob_idx&&entry.flag.allocated 
+        }.reduce(_||_)
+
+        val can_allocate = (!entry.flag.allocated)||(can_commit&&entry.flag.allocated)
+        val can_enq = can_allocate&io.dis_uop.valid
+        io.can_allocate := can_allocate
+        entry.uop := Mux(can_enq,io.dis_uop.bits,entry.uop)
+
+
+        // assert(PopCount(can_commit)<=1.U,"ROB alloc idx fault")
+        // assert(PopCount(can_commit)<=1.U,"ROB alloc idx fault")
+        entry.flag.allocated:= Mux(io.flush||can_commit,false.B,
+                        Mux(can_enq,true.B,entry.flag.allocated))
+        entry.flag.issued    := Mux(io.flush||can_commit||replay,false.B,
+                        Mux(entry.flag.allocated&&(io.grant),true.B,entry.flag.issued))
+    }else{
+        val can_allocate = ((entry.flag.allocated&&io.grant)||(!entry.flag.allocated))
+        val can_enq = can_allocate&io.dis_uop.valid
+        io.can_allocate := can_allocate
+        entry.uop := Mux(can_enq,io.dis_uop.bits,entry.uop)
+        entry.flag.allocated:= Mux(io.flush,false.B,
+                        Mux(can_enq,true.B,
+                        Mux(io.grant,false.B,entry.flag.allocated)))
+        dontTouch(entry)
+    }
+
+
+
+    /* 
+    wake up
+    问题：如何去调度每个wakeup端口的延迟，比如有一个ALU指令和一个MUL指令
+    且ALU和MUL均
+    我们根据valid标示，
+    然后wakeup的数量和执行单元的数量相同，每个执行单元都可以唤醒，但有的会延迟唤醒，比如MEM和MUL和DIV，
+    这里需要注意的是，最好将issuewidth和执行单元一致，这样可以最大限度的利用ISSUE queue
+    然后寄存器读端口的数目和写端口的数目和执行单元个数一致                
+
+    */
+
+
+    //detect pdst===prsx
+    val rs1_wakeupOH    = io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs1&&w.delay===0.U
+    }
+    val rs2_wakeupOH    = io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs2&&w.delay===0.U
+    }
+    val rs1_wakeup_delay = io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs1&&w.delay=/=0.U
+    }//只有一个生效
+    val rs2_wakeup_delay = io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs2&&w.delay=/=0.U
+    }
+
+    val rs1_alloc_delay = rs1_wakeup_delay.reduce(_||_)&(!entry.flag.rs1_wait)
+    val rs1_delay_val   = io.wakeup(PriorityEncoder(rs1_wakeup_delay)).delay
+    val rs1_free        = rs1_wakeupOH.reduce(_||_)||entry.flag.rs1_wait&&entry.flag.rs1_delay===0.U
+
+    val rs2_alloc_delay = rs2_wakeup_delay.reduce(_||_)&(!entry.flag.rs2_wait)
+    val rs2_delay_val   = io.wakeup(PriorityEncoder(rs2_wakeup_delay)).delay
+    val rs2_free        = rs2_wakeupOH.reduce(_||_)||entry.flag.rs2_wait&&entry.flag.rs2_delay===0.U
+
+    entry.flag.rs1_delay := Mux(rs1_alloc_delay,rs1_delay_val,
+                    Mux(entry.flag.rs1_delay=/=0.U,entry.flag.rs1_delay-1.U,entry.flag.rs1_delay))
+
+    entry.flag.rs1_wait  := Mux(entry.flag.rs1_wait&&entry.flag.rs1_delay===0.U||io.flush,false.B,
+                        Mux(rs1_wakeup_delay.reduce(_||_),true.B,entry.flag.rs1_wait))
+    entry.flag.rs1_bsy   := Mux(rs1_free||io.flush,false.B,
+                        Mux(io.dis_uop.valid,io.dis_uop.bits.prs1_busy,entry.flag.rs1_bsy))
+
+
+    entry.flag.rs2_delay := Mux(rs2_alloc_delay,rs2_delay_val,
+                    Mux(entry.flag.rs2_delay=/=0.U,entry.flag.rs2_delay-1.U,entry.flag.rs2_delay))
+
+    entry.flag.rs2_wait  := Mux(entry.flag.rs2_wait&&entry.flag.rs2_delay===0.U||io.flush,false.B,
+                        Mux(rs2_wakeup_delay.reduce(_||_),true.B,entry.flag.rs2_wait))
+    entry.flag.rs2_bsy   := Mux(rs2_free||io.flush,false.B,
+                        Mux(io.dis_uop.valid,io.dis_uop.bits.prs2_busy,entry.flag.rs2_bsy))
+    
+
+
+
+
+    io.req    := entry.can_iss
+
+    io.ex_uop.valid := io.grant&&(entry.can_iss)
+    io.ex_uop.bits  := entry.uop
+    io.out_uop.valid:= io.grant&&(entry.can_iss)
+    io.out_uop.bits  := entry.uop
+    // io.dis_uop:= entry
+    
+
+}
+
 /* 
 issue 模块分三个设计：
 1.首先设计非压缩队列并且只要找到issuewidth条就可以发射
@@ -150,11 +287,20 @@ val numWakeupPorts: Int,
 val issueWidth:Int,
 val numEntries:Int,
 val iqType:Int,
-val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
-    val io = IO(new IssueIO(issueWidth,numEntries,numWakeupPorts,dispatchWidth))
+val dispatchWidth:Int,
+val replayPort:Int,
+val HasReplay:Boolean= false)(implicit p: Parameters)extends GRVModule{
+    val io = IO(new IssueIO(issueWidth,numEntries,numWakeupPorts,dispatchWidth,replayPort,HasReplay))
 
-    val entrys = Seq.fill(numEntries)(Module(new IssueEntry(numWakeupPorts)))
+    val entrys = Seq.fill(numEntries)(Module(new ReplayIssueEntry(numWakeupPorts,replayPort,HasReplay)))
 
+
+    if(HasReplay){
+        for(i<- 0 until numEntries){
+            entrys(i).io.commit <>io.commit
+            entrys(i).io.replay <>io.replay
+        }
+    }
     val entry_can_alloc = VecInit(entrys.map{e=>e.io.can_allocate})
     val entry_can_iss   = VecInit(entrys.map{e=>e.io.req})//可以发射的指令
     val ex_uops         = VecInit(entrys.map(_.io.ex_uop))
@@ -242,3 +388,5 @@ val dispatchWidth:Int)(implicit p: Parameters)extends GRVModule{
 
 
 }
+
+

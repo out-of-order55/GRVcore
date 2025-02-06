@@ -40,6 +40,8 @@ class LDBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameter
     val commit        = Input(new CommitMsg)
     val flush         = Input(Bool())
 }
+
+    
 /* 
 
 面积主要在检查违例上，可以去尝试优化比较逻辑，
@@ -56,6 +58,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         idx1(totalSz)   =/=idx2(totalSz)&&
         idx1(totalSz-1,0)>idx2(totalSz-1,0))
     }
+
 
     val s0_replay=VecInit(io.read map{i=>
         i.req.valid&&(!i.req.ready)
@@ -128,6 +131,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         dcache_replayMsg(i).replay := io.read(i).resp.bits.replay&&io.read(i).resp.valid
         dcache_replayMsg(i).uop    := s2_uop(i)
     }
+    //replay的端口不能省去，
     for(i <- 0 until numReadport){
         io.replay(i).replay := Mux(s0_replay(i),s0_replayMsg(i).replay,dcache_replayMsg(i).replay)
         io.replay(i).uop    := Mux(s0_replay(i),s0_replayMsg(i).uop,dcache_replayMsg(i).uop)
@@ -282,5 +286,5 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
                 isOlder(s2_uop(i).rob_idx,s2_uop(idx).rob_idx,log2Ceil(ROBEntry))
         )).reduce(_||_)
     }
-    
+    dontTouch(io.check_resp)
 }

@@ -44,6 +44,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     // val s_idle::s_valid::s_inflight ::s_sameblock_inflight::s_wait_timeout::Nil = Enum(3)
 
     val store_buf = RegInit(VecInit.fill(numSBs)(0.U.asTypeOf(new SBEntry)))
+    dontTouch(store_buf)
     val numValid = PopCount(store_buf.map{buf=>buf.flag.valid})
     val full = RegNext(numValid+(io.sb_req.fire).asUInt===numSBs.U)
 	val empty = numValid===0.U
@@ -51,50 +52,36 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
 ////////////////////////////enq logic   ///////////////////////////// 
     val do_enq = io.sb_req.fire
     val align_addr   = BankAlign(io.sb_req.bits.addr)
-    val bank         = io.sb_req.bits.addr(offsetWidth-1,bankWidth)
-    dontTouch(bank)
+    val enq_bank         = io.sb_req.bits.addr(offsetWidth-1,bankWidth)
+
     io.sb_req.ready := (!full)
-    val checkOH = VecInit(store_buf.map{buf=>
-        buf.addr===BankAlign(io.sb_req.bits.addr)&&(buf.flag.valid)
-    })
-    // dontTouch(checkOH)
-    val check_idx = OHToUInt(checkOH)//only 1
-    val sb_data   = store_buf(check_idx).data(bank)
-    val sb_mask   = store_buf(check_idx).mask(bank)
+
+    val enq_merge_sels= VecInit(store_buf.map{buf=>
+        buf.addr===BankAlign(io.sb_req.bits.addr)&&(buf.flag.valid)&&(!buf.flag.inflight)&&do_enq
+    })//only 1
+    val enq_merge_idx = PriorityEncoder(enq_merge_sels)
+    // assert(do_enq&&(PopCount(enq_merge_sels)<=1.U),"allocate multi entry for the same addr")
+    val enq_can_merge       = enq_merge_sels.reduce(_||_)
+    val enq_allocate_sels   = PriorityEncoderOH(store_buf.map{buf=> (!buf.flag.valid)&&(!enq_can_merge)&&do_enq}) 
+    val is_enq_allocate     = (!enq_can_merge)
+    val is_same_block_inflight = VecInit(store_buf.map{buf=>
+        buf.addr===BankAlign(io.sb_req.bits.addr)&&(buf.flag.valid)&&(buf.flag.inflight)
+    }).reduce(_||_)
+
+    val sb_data   = WireInit(store_buf(enq_merge_idx).data(enq_bank))
+    val sb_mask   = WireInit(store_buf(enq_merge_idx).mask(enq_bank))
     val enq_data  = io.sb_req.bits.data
     val enq_mask  = io.sb_req.bits.mask
-    val enq_ops  = store_buf.map{buf=> (!buf.flag.valid)}
-    val enq_idx   = PriorityEncoder(enq_ops)
-    val enq_sels  = PriorityEncoderOH(enq_ops)
     val SplitData = Wire(Vec(XLEN/8,UInt(8.W)))
+    dontTouch(sb_mask)
+    dontTouch(enq_mask)
 
-    assert(check_idx<numSBs.U)
     for(i <- 0 until XLEN/8){
         SplitData(i) := Mux(enq_mask(i)===1.U,enq_data((i+1)*8-1,i*8),sb_data((i+1)*8-1,i*8))
     }
-    val is_has_same_entry = store_buf(check_idx).flag.inflight
-    // dontTouch(is_has_same_entry)
-    dontTouch(do_enq)
-    when(do_enq){
-        when(checkOH.reduce(_||_)){//merge entry
-            when(is_has_same_entry){
-                store_buf(enq_idx).addr      := align_addr
-                store_buf(enq_idx).data(bank):= enq_data
-                store_buf(enq_idx).mask(bank):= enq_mask
-                store_buf(enq_idx).flag.same_inflight     := true.B
 
-            }.otherwise{
-                store_buf(check_idx).data(bank) := Cat(SplitData.map(_.asUInt).reverse)
-                // store_buf(check_idx).data(bank) := enq_data
-                store_buf(check_idx).mask(bank) := sb_mask|enq_mask
-            }
-            // for()
-        }.otherwise{//new entry
-            store_buf(enq_idx).addr      := align_addr
-            store_buf(enq_idx).data(bank):= enq_data
-            store_buf(enq_idx).mask(bank):= enq_mask
-        }
-    }
+    dontTouch(do_enq)
+
 
 
 //////////////////////////write to Dcache logic///////////////////////////// 
@@ -105,7 +92,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val timeout = timeout_sels.reduce(_||_)
     val timeout_idx = PriorityEncoder(timeout_sels)
     val alloc_ops= store_buf.map{buf=>
-        buf.flag.valid&&(!buf.flag.timeout)&&(!buf.flag.inflight)
+        buf.flag.valid&&(!buf.flag.timeout)&&(!buf.flag.inflight)&&(!buf.flag.same_inflight)
     }
     val alloc_sels = PriorityEncoderOH(alloc_ops)
     val alloc_idx = PriorityEncoder(alloc_sels)
@@ -120,7 +107,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     io.dcache_write.req.bits.mask := Mux(timeout,store_buf(timeout_idx).mask,
                                     store_buf(alloc_idx).mask)  
 
-
+    dontTouch(io.dcache_write.req.bits.mask)
     
 
 
@@ -132,13 +119,14 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val resp_success = resp_valid&&resp_hit
     val resp_replay = resp_valid&&io.dcache_write.resp.bits.replay
     //only one
-    val resp_sels  = store_buf.map{buf=>
+    val resp_sels  = WireInit(VecInit(store_buf.map{buf=>
         buf.flag.inflight&&buf.addr===resp_addr
-    }
+    }))
+    
     //no const
-    val resp_sameblock_sels = store_buf.map{buf=>
+    val resp_sameblock_sels = WireInit(VecInit(store_buf.map{buf=>
         buf.flag.same_inflight&&buf.addr===resp_addr
-    }
+    }))
 
 //////////////////////////resp from Dcache logic/////////////////////////////
     val refill_valid = io.refillMsg.refilled
@@ -157,24 +145,40 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
 //////////////////////////////store buf///////////////////////////////////
     dontTouch(refill_sels)
     dontTouch(refill_valid)
+
+
     for(i<- 0 until numSBs){
+        
+
+
+        val resp_op     = (resp_sels(i)&&resp_success)
+        val refill_op   = (refill_valid&&refill_sels(i))
+        val enq_allocate_valid = enq_allocate_sels(i)
+        val enq_merge_valid    = enq_merge_sels(i)
+        //data
+        store_buf(i).addr           := Mux(enq_allocate_valid,align_addr,store_buf(i).addr)
+        store_buf(i).data(enq_bank) := Mux(enq_allocate_valid,enq_data,
+                                        Mux(enq_merge_valid,Cat(SplitData.map(_.asUInt).reverse),store_buf(i).data(enq_bank)))
+        //ctrl
         store_buf(i).retry_cnt          := Mux(store_buf(i).flag.timeout,store_buf(i).retry_cnt+1.U,0.U)
-        store_buf(i).flag.inflight      := Mux(((resp_sels(i)&&resp_success)||resp_replay)||(refill_valid&&refill_sels(i)),false.B,
+        store_buf(i).flag.inflight      := Mux((resp_op||resp_replay)||refill_op,false.B,
                                             Mux(timeout_sels(i)&&timeout&&do_deq,true.B,
                                             Mux(alloc_sels(i)&&(!timeout)&&do_deq,true.B,store_buf(i).flag.inflight ))) 
         
-        store_buf(i).flag.valid         := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),false.B,
-                                            Mux(do_enq&&enq_sels(i)&&((!checkOH.reduce(_||_)||
-                                            (is_has_same_entry)&&(checkOH.reduce(_||_)))),true.B,store_buf(i).flag.valid ))
+        store_buf(i).flag.valid         := Mux(resp_op||refill_op,false.B,
+                                            Mux(enq_allocate_valid,true.B,store_buf(i).flag.valid ))
         for(j <- 0 until bankNum){
-            store_buf(i).mask(j) := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),0.U,store_buf(i).mask(j) )
+            val is_enq_bank = enq_bank===j.U
+            store_buf(i).mask(j) := Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i),0.U,
+            Mux(enq_allocate_valid&&is_enq_bank,enq_mask,
+            Mux(enq_merge_valid&&is_enq_bank,enq_mask|sb_mask,store_buf(i).mask(j))))
         }
         store_buf(i).flag.timeout       := Mux(resp_sels(i)&&resp_replay ,true.B ,
-                                        Mux(resp_sels(i)&&resp_success||refill_valid&&refill_sels(i)||store_buf(i).retry_cnt===timeOut,false.B,store_buf(i).flag.timeout)) 
+                                        Mux(resp_op||refill_op||store_buf(i).retry_cnt===timeOut,false.B,store_buf(i).flag.timeout)) 
 
-        store_buf(i).flag.same_inflight := Mux((resp_sels(i)||resp_sameblock_sels(i))&&resp_success||refill_valid&&refill_sels(i),
+        store_buf(i).flag.same_inflight := Mux((resp_sels(i)||resp_sameblock_sels(i))&&resp_success||refill_op,
                                         false.B,
-                                        Mux(do_enq&&checkOH.reduce(_||_)&&is_has_same_entry&&enq_sels(i),true.B,store_buf(i).flag.same_inflight))  
+                                        Mux(is_same_block_inflight&&enq_allocate_valid,true.B,store_buf(i).flag.same_inflight))  
     }
 
 //////////////////////////forward         logic/////////////////////////////

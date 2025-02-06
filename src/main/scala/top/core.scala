@@ -52,11 +52,12 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val dispatcher       = Module(new ComplexDispatcher)
     dispatcher.io := DontCare
     //int 的可以发射到两个alu
-    val ld_iss_unit     = Module(new BaseIssueUnit(numIntIssueWakeupPorts,ldIssueParam.issueWidth,ldIssueParam.numEntries,IQT_LD.litValue.toInt,ldIssueParam.dispatchWidth))
+    val numReplayPort = ldIssueParam.issueWidth
+    val ld_iss_unit     = Module(new BaseIssueUnit(numIntIssueWakeupPorts,ldIssueParam.issueWidth,ldIssueParam.numEntries,IQT_LD.litValue.toInt,ldIssueParam.dispatchWidth,numReplayPort,true))
     ld_iss_unit.suggestName("ld_issue_unit")
-    val st_iss_unit     = Module(new BaseIssueUnit(numIntIssueWakeupPorts,stIssueParam.issueWidth,stIssueParam.numEntries,IQT_ST.litValue.toInt,stIssueParam.dispatchWidth))
+    val st_iss_unit     = Module(new BaseIssueUnit(numIntIssueWakeupPorts,stIssueParam.issueWidth,stIssueParam.numEntries,IQT_ST.litValue.toInt,stIssueParam.dispatchWidth,1,false))
     st_iss_unit.suggestName("st_issue_unit")
-    val int_iss_unit     = Module(new BaseIssueUnit(numIntIssueWakeupPorts,intIssueParam.issueWidth,intIssueParam.numEntries,IQT_INT.litValue.toInt,intIssueParam.dispatchWidth))
+    val int_iss_unit     = Module(new BaseIssueUnit(numIntIssueWakeupPorts,intIssueParam.issueWidth,intIssueParam.numEntries,IQT_INT.litValue.toInt,intIssueParam.dispatchWidth,1,false))
     int_iss_unit.suggestName("int_issue_unit")
 
     val issue_units      = Seq(int_iss_unit,ld_iss_unit,st_iss_unit)
@@ -81,13 +82,18 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     io.ifu.redirect_flush               := false.B
     io.ifu.flush_icache                 := false.B   
     io.ifu.redirect_pc                  := 0.U
-    io.ifu.get_pc                     <> alujmp_unit.io.get_ftq_pc
+    io.ifu.get_pc(0)                     <> alujmp_unit.io.get_ftq_pc
     
+    io.ifu.get_pc(1).ftq_idx := commit_flush.bits.ftq_idx
+    
+
+
     io.ifu.brupdate <>rob.io.br_update
     when(RegNext(commit_flush.valid)){
         io.ifu.redirect_flush             := true.B
         io.ifu.redirect_val               := true.B
-        io.ifu.redirect_pc                := commit_flush.bits.epc
+        io.ifu.redirect_pc                := Mux(RegNext(commit_flush.bits.flush_typ)===FLUSH_MISPRED,RegNext(rob.io.br_update.bits.target),
+                                            RegNext(io.ifu.get_pc(1).pc|commit_flush.bits.pc_lob))
     }
 
     for(i<- 0 until exe_units.size){
@@ -95,9 +101,9 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     }
     //
 ///////////////////////////////////DECODER///////////////////////////
-    for(i <- 0 until coreWidth){
-        io.ifu.fetchpacket
-    }
+    // for(i <- 0 until coreWidth){
+    //     io.ifu.fetchpacket
+    // }
     (decode_units zip io.ifu.fetchpacket.bits.uops).foreach{case(a,b)=>
         a.io.enq.uop := b.bits
         dontTouch(a.io.deq.uop)
@@ -179,6 +185,8 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
         io.lsu.dis(1).enq(j).bits  := ld_uop(j).bits
         
     }
+    ld_iss_unit.io.replay<>io.lsu.ld_replay
+    ld_iss_unit.io.commit<>rob.io.commit.bits
     // io.lsu.dis(1).enq <> dispatcher.io.dis_uops(ld_iss_idx)
     // ld_iss_unit.io.dis_uops<>ld_uop
 //////////////////////////////////ST/////////////////////////////////
@@ -434,9 +442,9 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     
 ///////////////////////////////////EXCEPTION////////////////////////////////////
     val check_unorder = WireInit(io.lsu.check_resp)
-    rob.io.lsuexc.bits.cause:= 0.U
-    rob.io.lsuexc.bits.uops := check_unorder.uop
-    rob.io.lsuexc.valid  := check_unorder.redirect
+    rob.io.lsu_exc.bits.cause:= 0.U
+    rob.io.lsu_exc.bits.uops := check_unorder.uop
+    rob.io.lsu_exc.valid  := check_unorder.redirect
 
     if(hasDebug){
         val commit_event = Module(new DifftestWrapper)
