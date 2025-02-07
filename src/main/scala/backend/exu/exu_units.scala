@@ -66,7 +66,7 @@ class ALUExuUnit(
         }
     }
 
-    val div_bsy = WireInit(false.B)
+    val div_bsy = RegInit(false.B)
     io.fu_types := Mux(hasALU.B, FU_ALU, 0.U) |
                     Mux(hasMUL.B, FU_MUL, 0.U) |
                     Mux(!div_bsy && hasDIV.B, FU_DIV, 0.U)|
@@ -140,8 +140,9 @@ class ALUExuUnit(
         div.io.resp.ready := !(iresp_fu_units.map(_.io.resp.valid).reduce(_|_))
 
         div_resp_val := div.io.resp.valid
-        div_bsy     := !div.io.req.ready ||
-                        (io.req.valid && io.req.bits.uop.fu_code===(FU_DIV))
+        div_bsy     := Mux(div.io.resp.valid||div.io.req.bits.kill,false.B,
+                        Mux(io.req.fire&&io.req.bits.uop.fu_code===(FU_DIV),true.B,div_bsy))
+                        
 
         iresp_fu_units += div
     }

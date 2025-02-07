@@ -241,9 +241,8 @@ extends FunctionalUnit(
         req.bits  := io.req.bits.uop
     } .otherwise {
         req.valid := !killed && req.valid
-
     }
-    when (reset.asBool) {
+    when (reset.asBool||io.resp.fire) {
     req.valid := false.B
     }
 
@@ -254,18 +253,15 @@ extends FunctionalUnit(
     div.io.req.bits.in1 := io.req.bits.rs1_data
     div.io.req.bits.in2 := io.req.bits.rs2_data
     div.io.req.bits.tag := DontCare
-    io.req.ready        := div.io.req.ready && !req.valid
+    io.req.ready        := div.io.req.ready 
 
     // handle pipeline kills and branch misspeculations
-    div.io.kill         := (req.valid && killed)
+    div.io.kill         := (killed)
 
     // response
-    io.resp.valid       := div.io.resp.valid && req.valid
-    div.io.resp.ready   := io.resp.ready
-    io.resp.valid       := div.io.resp.valid && req.valid
+    div.io.resp.ready      := io.resp.ready
+    io.resp.valid          := div.io.resp.valid 
     io.resp.bits.wb_data   := div.io.resp.bits.data
-    io.resp.bits.uop    := req.bits
-    when (io.resp.fire) {
-        req.valid := false.B
-    }
+    io.resp.bits.uop       := req.bits
+
 }

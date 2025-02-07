@@ -52,12 +52,6 @@ class LDPipeline(implicit p: Parameters) extends GRVModule with HasDCacheParamet
 with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val io = IO(new LDBundle)
     val ldq = Module(new LDQ)
-    def isOlder(idx1:UInt,idx2:UInt,totalSz:Int):Bool={
-        (idx1(totalSz)===idx2(totalSz)&&
-        idx1(totalSz-1,0)<idx2(totalSz-1,0)||
-        idx1(totalSz)   =/=idx2(totalSz)&&
-        idx1(totalSz-1,0)>idx2(totalSz-1,0))
-    }
 
 
     val s0_replay=VecInit(io.read map{i=>
@@ -156,6 +150,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         io.search_req.addr(i).valid := s1_valid(i)
         io.search_req.addr(i).bits  := s1_raddr(i)
         io.search_req.stq_idx(i)    := s1_uop(i).stq_idx
+        io.search_req.rob_idx(i)    := s1_uop(i).rob_idx
     }
     dontTouch(io.search_req)
 //////////////////////////   stage2    ////////////////////////////// 
@@ -172,7 +167,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         val sb_mask   = sb_resp(i).bits.mask
         val sb_data   = sb_resp(i).bits.data
         
-        bypassMsg(i).uop := DontCare
+        // bypassMsg(i).uop := DontCare
         bypassMsg(i).mask:= Mux(stq_valid&&sb_valid,stq_mask|sb_mask,
                             Mux(stq_valid,stq_mask,sb_mask))
         bypassMsg(i).data:= Cat(bypass_splitData(i).map(_.asUInt).reverse)
@@ -180,7 +175,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
             bypass_splitData(i)(j) := Mux(stq_mask(j)===1.U&&stq_valid,stq_data((j+1)*8-1,j*8),sb_data((j+1)*8-1,j*8)) 
         }
         bypass_en(i) := stq_resp(i).valid||sb_resp(i).valid
-        
+        bypassMsg(i).ldq_idx := s2_uop(i).ldq_idx
     }
 
 
@@ -204,11 +199,11 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     for(i <- 0 until numReadport){
         
         s2_dcache_resp(i)   :=  io.read(i).resp.bits
-        s2_wbvalid(i)       :=  io.read(i).resp.bits.hit&&s2_valid(i)&&(!io.flush)
+        s2_wbvalid(i)       :=  (io.read(i).resp.bits.hit||bypass_en(i))&&s2_valid(i)&&(!io.flush)
         //TO LDQ
-        ldq.io.pipe.s2_miss(i)  := (!io.read(i).resp.bits.hit)&&s2_valid(i)&&(!io.flush)
+        ldq.io.pipe.s2_miss(i)  := (!bypass_en(i))&&(!io.read(i).resp.bits.hit)&&s2_valid(i)&&(!io.flush)
         ldq.io.pipe.s2_uop(i)   := s2_uop(i)
-        ldq.io.pipe.s2_wb_req(i):= io.read(i).resp.bits.hit&&s2_valid(i)&&(!io.flush)
+        ldq.io.pipe.s2_wb_req(i):= s2_wbvalid(i)
     }
 ////////////////////////////wb   resp///////////////////////////// 
     for(i <- 0 until numReadport){
@@ -228,13 +223,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val st_valid = io.check_unorder.valid
     val st_addr= io.check_unorder.bits.check_addr
     val s0_check_sels= VecInit(s0_valid  zip s0_uop zip s0_raddr map{case((valid,uop),addr)=>
-        st_valid&&valid&&isOlder(st_rob_idx,uop.rob_idx,log2Ceil(ROBEntry))&&OffsetAlign(addr)===st_addr
+        st_valid&&valid&&isOlder(st_rob_idx,uop.rob_idx,log2Ceil(ROBEntry+1))&&OffsetAlign(addr)===st_addr
     })
     val s1_check_sels= VecInit(s1_valid  zip s1_uop zip s1_raddr map{case((valid,uop),addr)=>
-        st_valid&&valid&&isOlder(st_rob_idx,uop.rob_idx,log2Ceil(ROBEntry))&&OffsetAlign(addr)===st_addr
+        st_valid&&valid&&isOlder(st_rob_idx,uop.rob_idx,log2Ceil(ROBEntry+1))&&OffsetAlign(addr)===st_addr
     })
     val s2_check_sels= VecInit(s2_valid zip s2_uop zip s2_raddr map{case((valid,uop),addr)=>
-        st_valid&&valid&&isOlder(st_rob_idx,uop.rob_idx,log2Ceil(ROBEntry))&&OffsetAlign(addr)===st_addr
+        st_valid&&valid&&isOlder(st_rob_idx,uop.rob_idx,log2Ceil(ROBEntry+1))&&OffsetAlign(addr)===st_addr
     })
     val s0_isOlder = WireInit(VecInit.fill(numReadport)(false.B))
 
@@ -255,8 +250,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     s1_fail := s1_check_sels.reduce(_||_)
     s2_fail := s2_check_sels.reduce(_||_)
 
-    val part0_Oldest = isOlder(s1_uop(s1_Oldest).rob_idx,s0_uop(s0_Oldest).rob_idx,log2Ceil(ROBEntry))
-    val part1_Oldest = isOlder(ldq.io.check_resp.uop.rob_idx,s2_uop(s2_Oldest).rob_idx,log2Ceil(ROBEntry))
+    val part0_Oldest = isOlder(s1_uop(s1_Oldest).rob_idx,s0_uop(s0_Oldest).rob_idx,log2Ceil(ROBEntry+1))
+    val part1_Oldest = isOlder(ldq.io.check_resp.uop.rob_idx,s2_uop(s2_Oldest).rob_idx,log2Ceil(ROBEntry+1))
     val part0_fail   = s0_fail||s1_fail
     val part1_fail   = s2_fail||ldq.io.check_resp.redirect
     val part0_uop = Mux(s0_fail&&s1_fail,
@@ -267,7 +262,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
             Mux(part1_Oldest,ldq.io.check_resp.uop,s2_uop(s2_Oldest)),
             Mux(s2_fail,s2_uop(s2_Oldest),
             Mux(ldq.io.check_resp.redirect,ldq.io.check_resp.uop,0.U.asTypeOf(new MicroOp))))
-    val final_Oldest = isOlder(part1_uop.rob_idx,part0_uop.rob_idx,log2Ceil(ROBEntry))
+    val final_Oldest = isOlder(part1_uop.rob_idx,part0_uop.rob_idx,log2Ceil(ROBEntry+1))
     val final_fail = part0_fail||part1_fail
 
     io.check_resp.redirect := final_fail
@@ -277,13 +272,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     // io.check_resp.uop := 0.U.asTypeOf(new MicroOp)
     for(i <- 0 until numReadport){
         s0_isOlder(i) := VecInit((0 until i).foldLeft(true.B)((w,idx)=>
-                isOlder(s0_uop(i).rob_idx,s0_uop(idx).rob_idx,log2Ceil(ROBEntry))
+                isOlder(s0_uop(i).rob_idx,s0_uop(idx).rob_idx,log2Ceil(ROBEntry+1))
         )).reduce(_||_)
         s1_isOlder(i) := VecInit((0 until i).foldLeft(true.B)((w,idx)=>
-                        isOlder(s1_uop(i).rob_idx,s1_uop(idx).rob_idx,log2Ceil(ROBEntry))
+                        isOlder(s1_uop(i).rob_idx,s1_uop(idx).rob_idx,log2Ceil(ROBEntry+1))
         )).reduce(_||_)
         s2_isOlder(i) := VecInit((0 until i).foldLeft(true.B)((w,idx)=>
-                isOlder(s2_uop(i).rob_idx,s2_uop(idx).rob_idx,log2Ceil(ROBEntry))
+                isOlder(s2_uop(i).rob_idx,s2_uop(idx).rob_idx,log2Ceil(ROBEntry+1))
         )).reduce(_||_)
     }
     dontTouch(io.check_resp)

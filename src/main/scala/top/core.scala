@@ -168,7 +168,25 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     
     // int_iss_unit.io.dis_uops<> alu_uop
 
-    
+//////////////////////////////////ST/////////////////////////////////
+    val st_iss_idx = issueParams.indexWhere(_.iqType == IQT_ST.litValue) 
+    val st_uop = WireInit(dispatcher.io.dis_uops(st_iss_idx))
+    val stq_idx= WireInit(io.lsu.dis(0).enq_idx)
+    val st_enq_ready = WireInit(VecInit(io.lsu.dis(0).enq.map(_.ready)))
+
+    for(j <- 0 until stIssueParam.dispatchWidth){
+        st_uop(j).bits.stq_idx := Mux(stq_idx(j).valid,stq_idx(j).bits,0.U)
+        st_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
+        // st_iss_unit.io.fu_using(j) := mem_fu_types
+        st_iss_unit.io.dis_uops(j).valid := st_uop(j).valid&rob_ready
+        st_iss_unit.io.dis_uops(j).bits  := st_uop(j).bits
+        dispatcher.io.dis_uops(st_iss_idx)(j).ready := st_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)&&st_enq_ready(j)
+
+        io.lsu.dis(0).enq(j).valid := st_uop(j).valid
+        io.lsu.dis(0).enq(j).bits  := st_uop(j).bits
+    }
+    // st_iss_unit.io.dis_uops<>st_uop
+    // io.lsu.dis(0).enq <> dispatcher.io.dis_uops(st_iss_idx)
 //////////////////////////////////LD/////////////////////////////////
     val ld_iss_idx = issueParams.indexWhere(_.iqType == IQT_LD.litValue) 
     val ld_uop = WireInit(dispatcher.io.dis_uops(ld_iss_idx))
@@ -189,24 +207,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     ld_iss_unit.io.commit<>rob.io.commit.bits
     // io.lsu.dis(1).enq <> dispatcher.io.dis_uops(ld_iss_idx)
     // ld_iss_unit.io.dis_uops<>ld_uop
-//////////////////////////////////ST/////////////////////////////////
-    val st_iss_idx = issueParams.indexWhere(_.iqType == IQT_ST.litValue) 
-    val st_uop = WireInit(dispatcher.io.dis_uops(st_iss_idx))
-    val stq_idx= WireInit(io.lsu.dis(0).enq_idx)
-    val st_enq_ready = WireInit(VecInit(io.lsu.dis(0).enq.map(_.ready)))
-    for(j <- 0 until stIssueParam.dispatchWidth){
-        st_uop(j).bits.stq_idx := Mux(stq_idx(j).valid,stq_idx(j).bits,0.U)
-        st_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
-        // st_iss_unit.io.fu_using(j) := mem_fu_types
-        st_iss_unit.io.dis_uops(j).valid := st_uop(j).valid&rob_ready
-        st_iss_unit.io.dis_uops(j).bits  := st_uop(j).bits
-        dispatcher.io.dis_uops(st_iss_idx)(j).ready := st_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)&&st_enq_ready(j)
 
-        io.lsu.dis(0).enq(j).valid := st_uop(j).valid
-        io.lsu.dis(0).enq(j).bits  := st_uop(j).bits
-    }
-    // st_iss_unit.io.dis_uops<>st_uop
-    // io.lsu.dis(0).enq <> dispatcher.io.dis_uops(st_iss_idx)
 
 ///////////////////////////////////ISSUE PIPE///////////////////////////////
     val wb_resp  = VecInit(Seq(alujmp_unit.io.iresp.map(_.bits),alu_unit.io.iresp.map(_.bits),muldiv_unit.io.iresp.map(_.bits),io.lsu.ld_wb_resp.map(_.bits)).flatten)

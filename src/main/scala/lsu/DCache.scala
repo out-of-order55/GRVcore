@@ -109,6 +109,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	val io = IO(new Bundle{
 
 		val missmsg       = Input(Vec(numReadport,new DCacheMissMsg()))
+		val miss_replay   = Output(Vec(numReadport,Bool()))
 		val refill        = Decoupled(new RefillMsg)
 		val full          = Output(Bool())
 		val master   	  = AXI4Bundle(CPUAXI4BundleParameters())
@@ -117,11 +118,28 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		val flush		  = Input(Bool())
 	})
 
-
-
-    val reqData = Wire(Vec(numReadport,new MSHREntry))
+    class MSHRFlag extends Bundle{
+        val valid = Bool()
+        val inflight = Bool()
+        // val timeout  = Bool()
+        // val same_inflight  = Bool()
+    }
+	class MSHREntry extends Bundle{
+		val flag    = new MSHRFlag()
+		val data    = Vec(bankNum,UInt(XLEN.W))
+		val addr    = UInt(XLEN.W)
+		val mask    = Vec(bankNum,UInt((XLEN/8).W))
+		val mem_type= Bool()
+	}
+    val reqData = Wire(Vec(numReadport,new MSHREnq))
     val mshrs = RegInit(VecInit.fill(numMSHRs)(0.U.asTypeOf(new MSHREntry)))
 
+	/*如果两个miss地址一样，replay其中一个miss请求，如果两个miss请求均不满足replay条件，则全部replay
+	对于mshr，必须保证mshr内没有重复的地址，否则可能出现后refilled的数据覆盖前面的数据
+	合并条件：
+	1.请求 A 的 Acquire 请求还没有握手, 且 A 是 load 或 store 请求, B 是 load 请求;
+	2.请求 A 的 Acquire 已经发送出去了, 但是还没有收到 Grant(Data), 或者收到 Grant(Data) 了但还没有转发给 Load Queue, 且 A 是 load 或 store 请求, B 是 load 请求.
+	*/
 
 	val replaceEntry = RegInit(0.U.asTypeOf(new WBQEntry))
 	val replaceMsg 	 = WireInit(io.replace_resp.bits) 
@@ -129,15 +147,30 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	//只能为2的幂次
     val mshr_enq_ptr  = RegInit(0.U(log2Ceil(numMSHRs+1).W))
     val mshr_deq_ptr  = RegInit(0.U(log2Ceil(numMSHRs+1).W))
-	val req = WireInit(VecInit.fill(numReadport)(false.B))
+	
 
+	val reqMsg = mshrs(mshr_deq_ptr)
+
+	val allocate_req  = WireInit(VecInit.fill(numReadport)(false.B))
+	val merge_req     = WireInit(VecInit.fill(numReadport)(false.B))
+	val merge_sels    = VecInit(io.missmsg.map{msg=>//only 1
+		VecInit(mshrs.map{m=>
+			m.addr===msg.addr&&m.flag.valid&&msg.miss&&(m.mem_type)&&(!io.full)
+		})
+	})
+	val merge_bypass   = merge_req zip io.missmsg map{case(merge,msg)=>
+			merge&&(msg.addr===reqMsg.addr)&&(io.refill.fire)
+		}
+	val merge_bypass_idx = PriorityEncoder(merge_bypass)
+
+	val merge_bypass_msg = io.missmsg(merge_bypass_idx)
 
 	//MSHR ENQ
-    val enq_idxs = VecInit.tabulate(numReadport)(i => PopCount(req.take(i)))
+    val enq_idxs = VecInit.tabulate(numReadport)(i => PopCount(allocate_req.take(i)))
     val enq_offset = VecInit(enq_idxs.map(_+mshr_enq_ptr(mshrSz-1,0)))
 	val num_enq = PopCount(io.missmsg.map(_.miss))
-	val num_valid = PopCount(mshrs.map(_.valid))
-	val num_do_enq   = PopCount(req)
+	val num_valid = PopCount(mshrs.map(_.flag.valid))
+	val num_do_enq   = PopCount(allocate_req)
 	val enq_next_ptr = mshr_enq_ptr + num_do_enq
 	io.full := (mshr_enq_ptr(mshrSz)=/=mshr_deq_ptr(mshrSz)&&(num_enq+mshr_enq_ptr)(mshrSz-1,0)>mshr_deq_ptr(mshrSz-1,0))||
     num_valid===numMSHRs.U
@@ -172,6 +205,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 
 ///////////////////////////////////MSHR/////////////////////////////
     //write
+	//mshr合并机制和sb类似，
 
 
 //如果write和read缺失，该如何解决？
@@ -182,12 +216,14 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		val miss_same =(0 until i).foldLeft(false.B) ((p,k) =>
             io.missmsg(i).addr===io.missmsg(k).addr||p)
 		val check_same 		 = mshrs.map{mshr=>
-				mshr.addr===io.missmsg(i).addr&&mshr.valid
-			}.reduce(_||_)||miss_same
+				mshr.addr===io.missmsg(i).addr&&mshr.flag.valid
+			}.reduce(_||_)
+		
+		io.miss_replay(i)   := (io.full)||miss_same||(check_same&&(!merge_sels(i).reduce(_||_)))
 
-			// ||io.refill.bits.refill_addr===io.missmsg(i).addr&&io.refill.fire
-					//一方面和mshr的相等，另一方面和refill的相等，最后就是两个miss相等，这个没什么影响
-        req(i)          	:= io.missmsg(i).miss&&(!check_same)&&(!io.full)
+
+		merge_req(i)		:= (!miss_same)&&merge_sels(i).reduce(_||_)
+        allocate_req(i)     := io.missmsg(i).miss&&(!io.miss_replay(i))&&(!merge_req(i))
         reqData(i).addr 	:= io.missmsg(i).addr
         reqData(i).data 	:= io.missmsg(i).data
 		reqData(i).mask 	:= io.missmsg(i).mask
@@ -195,39 +231,51 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
         reqData(i).valid	:= io.missmsg(i).miss       
     }
 
-
+	dontTouch(reqData)
     /*
     请求数目不定如果想写入fifo，可以通过计数true+mshr_enq_ptr
     */
 
     dontTouch(enq_idxs)
     dontTouch(enq_offset)
+	dontTouch(allocate_req)
     for(i <- 0 until numReadport){
         for(j <- 0 until numMSHRs){
-            when(req(i)&&enq_offset(i)===j.U){
-                mshrs(j) := reqData(i)
+			val merge_data = Wire(Vec(bankNum,Vec(XLEN/8,UInt(8.W))))
+			//32 to 8
+			for(m <- 0 until bankNum){
+				for(n<- 0 until XLEN/8){
+					merge_data(m)(n) := Mux(reqData(i).mask(m)(n)===1.U,reqData(i).data(m)((n+1)*8-1,n*8),mshrs(j).data(m)((n+1)*8-1,n*8) ) 
+				}
+			}   
+            when(merge_req(i)&&merge_sels(i)(j)&&(!io.refill.fire)){ 	
+				mshrs(j).data 		:= merge_data.map{d=>Cat(d.map(_.asUInt).reverse)}	
+				for(b <- 0 until bankNum){
+					mshrs(j).mask(b) 	    := reqData(i).mask(b)|mshrs(j).mask(b) 	
+				}
+			}
+			.elsewhen(allocate_req(i)&&enq_offset(i)===j.U){
+				mshrs(j).addr 		:= reqData(i).addr 	
+				mshrs(j).data 		:= reqData(i).data 	
+				mshrs(j).mask 	    := reqData(i).mask 	
+				mshrs(j).mem_type   := reqData(i).mem_type 
+				mshrs(j).flag.valid	:= true.B
             }
         }
     }
 
-	// when(io.flush){
-	// 	mshr_enq_ptr := 0.U
-	// 	mshr_deq_ptr := 0.U
-	// 	mshrs.foreach{i=>
-	// 		i.valid:=false.B	
-	// 	}
-	// }
-	when(req.reduce(_||_)){
+
+	when(allocate_req.reduce(_||_)){
 		mshr_enq_ptr := enq_next_ptr
 	}
 	when(io.refill.fire){
-		mshrs(mshr_deq_ptr).valid := false.B
+		mshrs(mshr_deq_ptr):= 0.U.asTypeOf(new MSHREntry())
 		mshr_deq_ptr := mshr_deq_ptr + 1.U
 	}
 
 
-	val reqMsg = mshrs(mshr_deq_ptr)
 	
+	mshrs(mshr_deq_ptr).flag.inflight := Mux(io.refill.fire,false.B,Mux(send_req,true.B,mshrs(mshr_deq_ptr).flag.inflight))
 	val s_refillData = Reg(Vec(bankNum,UInt(XLEN.W)))
 	val replace_addr = AddressSplitter(reqMsg.addr) 
 	val replace_valid = RegInit(false.B)
@@ -246,9 +294,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	val aw_fire = io.master.aw.fire
 	val w_fire  = io.master.w.fire
 	val b_fire  = io.master.b.fire
-	// master.aw := DontCare
-	// master.w  := DontCare
-	// master.b  := DontCare
+
 	
 	val ar = Reg(new AXI4BundleAR(CPUAXI4BundleParameters()))
 	val r  = Reg(new AXI4BundleR(CPUAXI4BundleParameters()))
@@ -259,7 +305,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 	aw <> io.master.aw.bits
 	w  <> io.master.w.bits
 	b  <> io.master.b.bits
-	dontTouch(io.master)
+	// dontTouch(io.master)
 	// dontTouch(reqMsg)
 	val rcnt 		= Reg(UInt(log2Ceil(2*blockBytes/4).W))
 	val wcnt 		= Reg(UInt(log2Ceil(2*blockBytes/4).W))
@@ -301,12 +347,20 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		rcnt := rcnt + 1.U
 	}
 
-
+	val merge_bypass_data = Wire(Vec(bankNum,Vec(XLEN/8,UInt(8.W))))
+	val merge_bypass_mask = Wire(Vec(bankNum,UInt((XLEN/8).W)))
+	//32 to 8
+	for(i <- 0 until bankNum){
+		for(j<- 0 until XLEN/8){
+			merge_bypass_data(i)(j) := Mux(merge_bypass.reduce(_||_)&&merge_bypass_msg.mask(i)(j)===1.U,merge_bypass_msg.data(i)((j+1)*8-1,j*8),reqMsg.data(i)((j+1)*8-1,j*8) ) 
+		}
+		merge_bypass_mask(i) := Mux(merge_bypass.reduce(_||_),merge_bypass_msg.mask(i)|reqMsg.mask(i),reqMsg.mask(i))
+	}
 	val refillData = Wire(Vec(bankNum,Vec(XLEN/8,UInt(8.W))))
 	//32 to 8
 	for(i <- 0 until bankNum){
 		for(j<- 0 until XLEN/8){
-			refillData(i)(j) := Mux(reqMsg.mask(i)(j)===1.U,reqMsg.data(i)((j+1)*8-1,j*8),s_refillData(i)((j+1)*8-1,j*8) ) 
+			refillData(i)(j) := Mux(merge_bypass_mask(i)(j)===1.U,merge_bypass_data(i)(j),s_refillData(i)((j+1)*8-1,j*8) ) 
 		}
 	}
 	dontTouch(refillData)
@@ -477,20 +531,16 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	val s1_rvalid   	= RegNext(VecInit(s0_rvalid.map{i=>i&(!io.flush)}))
 
 	val s1_wdata 		= RegNext(s0_wdata)
-	val s1_wvalid       = RegNext(s0_wvalid&(!io.flush)   )
+	val s1_wvalid       = RegNext(s0_wvalid   )
 	val s1_waddr        = RegNext(s0_waddr    )
 	val s1_wmsg         = RegNext(s0_wmsg     )
 	val s1_wmask        = RegNext(s0_wmask)
 	
-    // val s1_whit    = VecInit((rtag zip rvalid).map{case(a,b)=>
-    //     VecInit((a zip b zip s1_wmsg).map{ case((r,m),l)=>
-    //         r===l.bits.tag&(RegNext(m)===true.B)
-    //     }).reduce(_||_)
-	// })
+
 	val s1_whit = VecInit((rtag zip rvalid).map{case(a,b)=>
-        VecInit((a zip b zip s1_rmsg).map{ case((r,m),l)=>
-            r===l.bits.tag&(RegNext(m)===true.B)
-        }).reduce(_||_)
+        VecInit((a zip b).map{case(r,m)=>
+            r===s1_wmsg.bits.tag&(RegNext(m)===true.B)
+        }).reduce(_&&_)
 	})
 	val s1_rhit = Transpose(VecInit((rtag zip rvalid).map{case(a,b)=>
         VecInit((a zip b zip s1_rmsg).map{ case((r,m),l)=>
@@ -498,10 +548,10 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
         })
 	}))
     val s1_whitWay = OHToUInt(s1_whit)
-	val s1_rhitWay = s1_rhit.map{way=>
+	val s1_rhitWay = VecInit(s1_rhit.map{way=>
 		OHToUInt(way)
-	}
-
+	})
+	dontTouch(s1_rhitWay)
 
 	
 	val s1_missMsg = Wire(Vec(numReadport,new DCacheMissMsg()))//uesd for write and read
@@ -525,7 +575,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	}))
 	dontTouch(s1_final_wdata)
 	val s2_rvalid  		= RegNext(VecInit(s1_rvalid.map{i=>i&(!io.flush)}))
-	val s2_wvalid 		= RegNext(s1_wvalid&(!io.flush))
+	val s2_wvalid 		= RegNext(s1_wvalid)
 	val s2_whit 		= RegNext(s1_whit)
 	val s2_wmsg         = RegNext(s1_wmsg     )
 	val s2_rmsg     	= RegNext(s1_rmsg)
@@ -583,7 +633,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	missunit.io.replace_resp.valid   	:= RegNext(replaced)
 	missunit.io.replace_resp.bits.way	:= rp
 	missunit.io.replace_resp.bits.addr 	:= Cat(rtag(rp)(0),RegNext(missunit.io.replace_req.bits.idx))<<offsetWidth
-	missunit.io.replace_resp.bits.dirty	:= rmeta(rp)(0).dirty
+	missunit.io.replace_resp.bits.dirty	:= rmeta(rp)(0).dirty&&rvalid(rp)(0)
 	missunit.io.replace_resp.bits.data 	:= rdata(0)(rp)
 	dontTouch(rtag)
 	for(i <- 0 until numReadport){
@@ -616,12 +666,12 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		io.read(i).resp.valid 		:= s2_rvalid(i)
 		io.read(i).resp.bits.data	:= s2_rhitData(i)(idx)
 		io.read(i).resp.bits.hit	:= s2_rhit(i)&&s2_rvalid(i)
-		io.read(i).resp.bits.replay	:= mshr_full
+		io.read(i).resp.bits.replay	:= missunit.io.miss_replay(i)&&s2_rvalid(i)
 	}
 	io.write.resp.valid 	:= s2_wvalid
 	io.write.resp.bits.addr := Cat(s2_wmsg.bits.tag,s2_wmsg.bits.index)<<offsetWidth
 	io.write.resp.bits.hit 	:= s2_whit.reduce(_||_)
-	io.write.resp.bits.replay:= mshr_full
+	io.write.resp.bits.replay:= missunit.io.miss_replay(0)&&s2_wvalid
 
 
 ///////////////////////////////////////////////////////////////////
@@ -630,6 +680,9 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 		for(j  <- 0 until tag.head.length){
 			val tag_idx = Mux(refilled,refillMsg.index,
 							Mux(replaced,replaceMsg.idx,
+							Mux(s0_wvalid,s0_wmsg.bits.index,s0_rmsg(j).bits.index)))
+			val vld_idx = Mux(refilled,refillMsg.index,
+							Mux(RegNext(replaced),RegNext(replaceMsg.idx),
 							Mux(s0_wvalid,s0_wmsg.bits.index,s0_rmsg(j).bits.index)))
 			val enable  = refilled||(s0_wvalid||s0_rvalid.reduce(_||_))||replaced
 			val write	= refilled&&(i.U===refillWay)
@@ -641,8 +694,8 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			rtag(i)(j)  		:= tag(i)(j).io.dataOut
 			rvalid(i)(j)		:= valid(i)(j)(tag_idx)
 
-			valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0)) := Mux(write,true.B,
-							Mux(replaced,false.B,valid(i)(j)(tag_idx(log2Ceil(nSets)-1,0))))
+			valid(i)(j)(vld_idx(log2Ceil(nSets)-1,0)) := Mux(write,true.B,
+							Mux(RegNext(replaced)&&rp===i.U,false.B,valid(i)(j)(vld_idx(log2Ceil(nSets)-1,0))))
 			
 		}
 	}
@@ -654,12 +707,13 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			val s0_renOH   = (0 until numReadport).map{idx=>
 				s0_rmsg(idx).bits.bank===j.U&&s0_rmsg(idx).valid
 			}
+			val data_wvalid = s1_wvalid&&s1_wmask(j)=/=0.U
 			val s0_ridx = Mux1H(s0_renOH,s0_rmsg.map(_.bits.index))
 			val data_idx = Mux(refilled,refillMsg.index,
 							Mux(replaced,replaceMsg.idx,
 							Mux(s1_wvalid,s1_wmsg.bits.index,s0_ridx)))
 			val enable  = refilled||((s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced
-			val write	= refilled&&(i.U===refillWay)||s1_wvalid&&s1_whit(i)
+			val write	= refilled&&(i.U===refillWay)||data_wvalid&&s1_whit(i)
 			val w_data 	= Mux(refilled,refillData(j),s1_final_wdata(j))
 			data(i)(j).io.enable := enable
 			data(i)(j).io.addr   := data_idx

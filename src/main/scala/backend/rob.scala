@@ -91,19 +91,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         if(coreWidth == 1) { return 0.U }
         else           { return rob_idx(log2Ceil(coreWidth)-1, 0).asUInt }
     }
-    def GetPtrMask(ptr:UInt,size:Int):UInt={
-        return ptr(size-1)
-    }
-    def GetPtrVal(ptr:UInt,size:Int):UInt={
-        return ptr(size-2,0)
-    }
-    def isOlder(idx1:UInt,idx2:UInt):Bool={
-        val size = log2Ceil(ROBEntry+1)
-        GetPtrMask(idx1,size)===GetPtrMask(idx2,size)&&
-        GetPtrVal(idx1,size)<GetPtrVal(idx2,size)||
-        GetPtrMask(idx1,size)=/=GetPtrMask(idx2,size)&&
-        GetPtrVal(idx1,size)>GetPtrVal(idx2,size)
-    }
+
     val rob_entry   = RegInit(VecInit.fill(coreWidth)(VecInit.fill(ROBEntry/coreWidth)(0.U.asTypeOf(new ROBEntryBundle))))
     
     val rob_enq_val = GetPtrVal(rob_enq_ptr,RobbankSz)
@@ -127,9 +115,9 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     //异常信息必须和之前的比较谁旧
     val commit_exc_msg   = RegInit(0.U.asTypeOf(Valid(new CommitExcMsg)))
     val is_exc_older  = (!commit_exc_msg.valid)&&((!br_update.valid)||
-                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx))||
-                        (commit_exc_msg.valid&&io.lsu_exc.valid&&isOlder(io.lsu_exc.bits.uops.rob_idx,commit_exc_msg.bits.rob_idx)&&
-                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx))
+                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1)))||
+                        (commit_exc_msg.valid&&io.lsu_exc.valid&&isOlder(io.lsu_exc.bits.uops.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1))&&
+                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1)))
     
     exc_msg.valid           := io.lsu_exc.valid&&is_exc_older
     exc_msg.bits.ftq_idx    := io.lsu_exc.bits.uops.ftq_idx
@@ -166,9 +154,9 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     io.flush.valid := false.B
     
     val is_flush_older = (!br_update.valid)&&(!commit_exc_msg.valid)||
-                        (!br_update.valid)&&isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx)||
-                        (br_update.valid&&isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx)&&
-                        isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx)) 
+                        (!br_update.valid)&&isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1))||
+                        (br_update.valid&&isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1))&&
+                        isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1))) 
     flush := br_info.bits.cfi_mispredicted&&br_info.valid&&is_flush_older
 
 

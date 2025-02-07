@@ -98,30 +98,36 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
     val ghist    = SyncReadMem(ftqentries,UInt(globalHistoryLength.W))
     val meta     = SyncReadMem(ftqentries,UInt(bpdMaxMetaLength.W))
 
-    val comm_ptr   = RegInit(0.U(log2Ceil(ftqentries).W))//提交阶段更新指针
-    val deq_ptr    = RegInit(0.U(log2Ceil(ftqentries).W))
-    val enq_ptr    = RegInit(0.U(log2Ceil(ftqentries).W))
+    val comm_ptr   = RegInit(0.U(log2Ceil(ftqentries+1).W))//提交阶段更新指针
+    val deq_ptr    = RegInit(0.U(log2Ceil(ftqentries+1).W))
+    val enq_ptr    = RegInit(0.U(log2Ceil(ftqentries+1).W))
     
     val full     = WireInit(false.B)
 
     io.enq.ready := !full//或者commit更新
     val do_enq   = WireInit(io.enq.fire)
-    full := RegNext((enq_ptr+1.U)===comm_ptr)
+    val ftq_enq_val = GetPtrVal(enq_ptr,log2Ceil(ftqentries+1))
+    val ftq_enq_mask= GetPtrMask(enq_ptr,log2Ceil(ftqentries+1))
+    val ftq_comm_val = GetPtrVal(comm_ptr,log2Ceil(ftqentries+1))
+    val ftq_comm_mask= GetPtrMask(comm_ptr,log2Ceil(ftqentries+1))
+    val ftq_deq_val = GetPtrVal(deq_ptr,log2Ceil(ftqentries+1))
+    val ftq_deq_mask= GetPtrMask(deq_ptr,log2Ceil(ftqentries+1))
+    full := (ftq_enq_val===ftq_comm_val)&&(ftq_enq_mask=/=ftq_comm_mask)
     dontTouch(full)
     dontTouch(do_enq)
 /////////////////enq logic////////////
     when(do_enq){
         enq_ptr := enq_ptr + 1.U
-        pcs(enq_ptr)                  :=  io.enq.bits.pc
-        brInfo(enq_ptr).cfi_idx       := io.enq.bits.cfi_idx
-        brInfo(enq_ptr).cfi_taken     := io.enq.bits.cfi_taken
-        brInfo(enq_ptr).cfi_mispredicted := false.B
-        brInfo(enq_ptr).cfi_type      := io.enq.bits.cfi_type
-        brInfo(enq_ptr).is_jal        := io.enq.bits.is_jal
-        brInfo(enq_ptr).is_jalr       := io.enq.bits.is_jalr
-        brInfo(enq_ptr).br_mask       := io.enq.bits.br_mask & io.enq.bits.mask
-        meta.write(enq_ptr,io.enq.bits.bpd_meta)
-        ghist.write(enq_ptr,io.enq.bits.ghist)
+        pcs(ftq_enq_val)                  :=  io.enq.bits.pc
+        brInfo(ftq_enq_val).cfi_idx       := io.enq.bits.cfi_idx
+        brInfo(ftq_enq_val).cfi_taken     := io.enq.bits.cfi_taken
+        brInfo(ftq_enq_val).cfi_mispredicted := false.B
+        brInfo(ftq_enq_val).cfi_type      := io.enq.bits.cfi_type
+        brInfo(ftq_enq_val).is_jal        := io.enq.bits.is_jal
+        brInfo(ftq_enq_val).is_jalr       := io.enq.bits.is_jalr
+        brInfo(ftq_enq_val).br_mask       := io.enq.bits.br_mask & io.enq.bits.mask
+        meta.write(ftq_enq_val,io.enq.bits.bpd_meta)
+        ghist.write(ftq_enq_val,io.enq.bits.ghist)
     }
 
 
@@ -137,9 +143,9 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 //////////////////commit logic//////////
     val do_commit_update = io.deq.valid
     
-    val empty            = RegNext(comm_ptr+1.U===enq_ptr)
+    val empty            = (ftq_enq_val===ftq_comm_val)&&(ftq_enq_mask===ftq_comm_mask)
     val commit_mispred   = (io.redirect&&io.brupdate.bits.cfi_mispredicted)
-    val commit_idx       = io.deq.bits
+    val commit_idx       = GetPtrVal(io.deq.bits,log2Ceil(ftqentries+1))
     val commit_brInfo    = RegNext(brInfo(commit_idx))
     val commit_pc        = RegNext(pcs(commit_idx))
     val commit_meta      = meta.read(commit_idx,true.B)
@@ -200,7 +206,7 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
 
 /////////////////////backend get pc///////////////
     for(i<- 0 until 2){
-        val get_ftq_idx= io.get_ftq_pc(i).ftq_idx
+        val get_ftq_idx= GetPtrVal(io.get_ftq_pc(i).ftq_idx,log2Ceil(ftqentries+1))
     ///如果issue指令为br，则在issue读，ex阶段出结果
         io.get_ftq_pc(i).entry  := (brInfo(get_ftq_idx))
         io.get_ftq_pc(i).pc     := (pcs(get_ftq_idx))

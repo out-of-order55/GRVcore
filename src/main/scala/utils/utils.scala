@@ -91,6 +91,7 @@ object ImmGen extends RISCVConstants with GRVOpConstants
     return Cat(sign, i30_20, i19_12, i11, i10_5, i4_1, i0).asSInt
   }
 }
+
 class Compactor[T<:Data](n:Int,k:Int,gen:T) extends  Module{
   val io = IO(new Bundle{
     val in  = Vec(n, Flipped(DecoupledIO(gen)))

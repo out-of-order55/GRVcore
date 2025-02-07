@@ -66,6 +66,8 @@ GRVCore
 
 2024/2/6：目前还有两个大问题：1，指令replay机制 2，delay指令唤醒
 
+2024/2/6：完成昨天的问题1，并且修复了若干个bug，全部集中在lsu部分（修复mshr和sb的合并机制)
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

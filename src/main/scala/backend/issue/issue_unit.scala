@@ -221,23 +221,24 @@ class ReplayIssueEntry(val numWakeupPorts: Int,val replayPort:Int,val HasReplay:
 
 
     //detect pdst===prsx
-    val rs1_wakeupOH    = io.wakeup.map{w=>
-        w.valid&&w.pdst===entry.uop.prs1&&w.delay===0.U
-    }
-    val rs2_wakeupOH    = io.wakeup.map{w=>
-        w.valid&&w.pdst===entry.uop.prs2&&w.delay===0.U
-    }
-    val rs1_wakeup_delay = io.wakeup.map{w=>
-        w.valid&&w.pdst===entry.uop.prs1&&w.delay=/=0.U
-    }//只有一个生效
-    val rs2_wakeup_delay = io.wakeup.map{w=>
-        w.valid&&w.pdst===entry.uop.prs2&&w.delay=/=0.U
-    }
-
+    val rs1_wakeupOH    = VecInit(io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs1&&w.delay===0.U&&entry.flag.allocated
+    })
+    val rs2_wakeupOH    = VecInit(io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs2&&w.delay===0.U&&entry.flag.allocated
+    })
+    val rs1_wakeup_delay = VecInit(io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs1&&w.delay=/=0.U&&entry.flag.allocated
+    })//只有一个生效
+    val rs2_wakeup_delay = VecInit(io.wakeup.map{w=>
+        w.valid&&w.pdst===entry.uop.prs2&&w.delay=/=0.U&&entry.flag.allocated
+    })
+    dontTouch(rs1_wakeupOH)
     val rs1_alloc_delay = rs1_wakeup_delay.reduce(_||_)&(!entry.flag.rs1_wait)
     val rs1_delay_val   = io.wakeup(PriorityEncoder(rs1_wakeup_delay)).delay
     val rs1_free        = rs1_wakeupOH.reduce(_||_)||entry.flag.rs1_wait&&entry.flag.rs1_delay===0.U
 
+    dontTouch(rs1_free)
     val rs2_alloc_delay = rs2_wakeup_delay.reduce(_||_)&(!entry.flag.rs2_wait)
     val rs2_delay_val   = io.wakeup(PriorityEncoder(rs2_wakeup_delay)).delay
     val rs2_free        = rs2_wakeupOH.reduce(_||_)||entry.flag.rs2_wait&&entry.flag.rs2_delay===0.U

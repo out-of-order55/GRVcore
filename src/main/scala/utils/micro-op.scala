@@ -22,7 +22,7 @@ freechips.rocketchip.rocket.constants.MemoryOpConstants
     val taken            = Bool()
     val br_type          = UInt(2.W)
     //指令唯一标示
-    val ftq_idx          = UInt(log2Ceil(ftqentries).W)
+    val ftq_idx          = UInt(log2Ceil(ftqentries+1).W)
     val iq_type          = UInt(IQT_SZ.W)        // which issue unit do we use?
     val fu_code          = UInt(FUC_SZ.W) // which functional unit do we use?
     val ctrl             = new CtrlSignals// for exu

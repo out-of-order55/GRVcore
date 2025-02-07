@@ -155,36 +155,35 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     stq(s0_idx).flag.datavalid := Mux(s0_valid,true.B,stq(s0_idx).flag.datavalid)
 ///////////////////////////forward data//////////////////////////////
     val forward_addr = io.search_req.addr
-    val forward_OH = io.search_req.stq_idx.map{i=> UIntToOH(i)}
-    val deq_OH     = UIntToOH(stq_deq_ptr(log2Ceil(numSTQs)-1,0))
-    val differentFlag = io.search_req.stq_idx.map{i=>
-        i(log2Ceil(numSTQs))=/=stq_deq_ptr(log2Ceil(numSTQs))
-    }
-    val forward_mask1 = Wire(Vec(numReadport,UInt(numSTQs.W)))
-    val forward_mask2 = Wire(Vec(numReadport,UInt(numSTQs.W)))
+
+
+    val forward_sels = VecInit(forward_addr.map{addr=>
+        VecInit(stq.map{q=>
+            q.addr===addr.bits&&q.flag.allocated&&q.flag.addrvalid&&addr.valid&&q.flag.datavalid
+        })
+    })
+    val stq_rob_idx = VecInit(stq.map(_.uop.rob_idx))
+
+    val forward_idxs = Wire(Vec(numReadport,UInt(log2Ceil(numSTQs).W)))
+    val forward_vld  = Wire(Vec(numReadport,Bool()))
     for(i <- 0 until numReadport){
-        forward_mask1(i) := Mux(differentFlag(i),MaskUpper(deq_OH),MaskLower(forward_OH(i))&MaskUpper(deq_OH))
-        forward_mask2(i) := Mux(differentFlag(i),MaskLower(forward_OH(i)),0.U)
+        val (idx,vld) = findOldest(stq_rob_idx,forward_sels(i),log2Ceil(ROBEntry+1))
+        forward_idxs(i) := idx
+        forward_vld(i)  := vld
     }
 
-    val forward_sels1 = WireInit(VecInit.fill(numReadport)(VecInit.fill(numSTQs)(false.B)))
-    val forward_sels2 = WireInit(VecInit.fill(numReadport)(VecInit.fill(numSTQs)(false.B)))
-    val forward_idxs = Wire(Vec(numReadport,UInt(log2Ceil(numSTQs).W)))
+
+
+    // 
     for(i <- 0 until numReadport){
-        for(j <- 0 until numSTQs){
-            forward_sels1(i)(j) := Mux(forward_mask1(i)(j)===1.U,stq(j).addr===forward_addr(i).bits&&forward_addr(i).valid&&ValidVec(j),
-                                false.B)
-            forward_sels2(i)(j) := Mux(forward_mask2(i)(j)===1.U,stq(j).addr===forward_addr(i).bits&&forward_addr(i).valid&&ValidVec(j),
-                                false.B)
-        }
-        forward_idxs(i) := Mux(forward_sels2(i).reduce(_||_),PriorityEncoder(forward_sels2(i)),PriorityEncoder(forward_sels1(i)))
-        io.search_resp(i).valid     := forward_sels1(i).reduce(_||_)||forward_sels1(i).reduce(_||_)
+
+        
+        io.search_resp(i).valid     := forward_vld(i)
         io.search_resp(i).bits.data := stq(forward_idxs(i)).data
         io.search_resp(i).bits.mask := stq(forward_idxs(i)).mask
-        io.search_resp(i).bits.uop  := stq(forward_idxs(i)).uop
+        io.search_resp(i).bits.ldq_idx  := 0.U
     }
-    
-    
+
 ///////////////////////////    commit     //////////////////////////////
 
     dontTouch(commit_offset)

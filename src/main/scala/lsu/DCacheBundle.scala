@@ -14,6 +14,7 @@ class DCacheMissMsg(implicit  p:Parameters) extends GRVBundle with HasICachePara
     val addr   = (UInt(XLEN.W))
 	val data = Vec(bankNum,UInt(XLEN.W))
 	val mask = Vec(bankNum,UInt((XLEN/8).W))
+    
 }
 class ReadReq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
     
@@ -52,7 +53,7 @@ class DCacheBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParam
     val s2_kill = Input(Bool())
 }
 //mshr的队列数据mask不一定是总是1
-class MSHREntry(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
+class MSHREnq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
     val valid   = Bool()
     val data    = Vec(bankNum,UInt(XLEN.W))
     val addr    = UInt(XLEN.W)

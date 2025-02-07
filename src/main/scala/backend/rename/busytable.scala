@@ -37,12 +37,12 @@ class BusyTable(val numWbPorts: Int)(implicit p: Parameters) extends GRVModule
     for (i <- 0 until coreWidth) {
         val prs1_was_bypassed = (0 until i).map(j =>
         io.ren_uops(i).bits.lrs1 === io.ren_uops(j).bits.ldst && io.ren_uops(j).valid).foldLeft(false.B)(_||_)&&
-        io.ren_uops(i).bits.lrs1=/=0.U
+        io.ren_uops(i).bits.lrs1=/=0.U&&io.ren_uops(i).bits.lrs1_rtype =/= RT_X
         val psr1_was_wakeup = (0 until numWbPorts).map{idx=>io.wb_valids(idx)&&
             (io.wb_pdsts(idx)===io.ren_uops(i).bits.prs1)}.reduce(_||_)
         val prs2_was_bypassed = (0 until i).map(j =>
         io.ren_uops(i).bits.lrs2 === io.ren_uops(j).bits.ldst && io.ren_uops(j).valid).foldLeft(false.B)(_||_)&&
-        io.ren_uops(i).bits.lrs2=/=0.U
+        io.ren_uops(i).bits.lrs2=/=0.U&&io.ren_uops(i).bits.lrs2_rtype =/= RT_X
         val psr2_was_wakeup = (0 until numWbPorts).map{idx=>io.wb_valids(idx)&&
             (io.wb_pdsts(idx)===io.ren_uops(i).bits.prs2)}.reduce(_||_)
         io.busy_resps(i).prs1_busy := (!psr1_was_wakeup)&&(busy_table(io.ren_uops(i).bits.prs1) || prs1_was_bypassed) 

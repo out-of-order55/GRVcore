@@ -70,13 +70,15 @@ class LDQPipeIO(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
 class LDQSearchReq(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val addr        = Vec(numReadport,Valid(UInt(XLEN.W)))//addr是流水线发出的
     val stq_idx     = Vec(numReadport,UInt(log2Ceil(numSTQs+1).W))
+    val rob_idx     = Vec(numReadport,UInt(log2Ceil(ROBEntry+1).W))
+    // val ldq_idx     = Vec(numReadport,UInt(log2Ceil(numLDQs+1).W))
 }
 class LDQSearchResp(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     // val addr    = Vec(numReadport,Valid(UInt(XLEN.W)))//addr是流水线发出的
     // val 
     val data    = UInt(XLEN.W)
     val mask    = UInt((XLEN/8).W)
-    val uop     = new MicroOp
+    val ldq_idx = UInt(log2Ceil(numLDQs+1).W)
 }
 class LDQResp(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val data    = Vec(numReadport,UInt(XLEN.W))
@@ -179,28 +181,25 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
             ldq(s0_idx(i)).addr := s0_waddr(i)
         }
     }
+    //forward data
+//bug
+    val bypassMsg =WireInit(io.search_resp)
 
     //stage 2 update state
     val s2_valid    = io.pipe.s2_wb_req//not miss
     val s2_idx      = io.pipe.s2_uop.map(_.ldq_idx)
     val s2_miss     = io.pipe.s2_miss
     for(i <- 0 until numReadport){
+        val bypass_en = bypassMsg(i).valid
+        val idx = bypassMsg(i).bits.ldq_idx
+        ldq(idx).data                 := Mux(bypass_en,bypassMsg(i).bits.data,ldq(idx).data)
+        ldq(idx).mask                 := Mux(io.flush||s2_valid(i),0.U,Mux(bypass_en&&s2_miss(i),bypassMsg(i).bits.mask,ldq(idx).mask))
         ldq(s2_idx(i)).flag.datavalid := Mux(s2_valid(i),true.B,ldq(s2_idx(i)).flag.datavalid)
         ldq(s2_idx(i)).flag.wb_valid  := Mux(s2_valid(i),true.B,ldq(s2_idx(i)).flag.wb_valid)
         ldq(s2_idx(i)).flag.miss      := Mux(s2_miss(i),true.B,ldq(s2_idx(i)).flag.miss)
     }
 
-    //forward data
 
-    val bypassMsg =WireInit(io.search_resp)
-
-    for(i <- 0 until numReadport){
-
-        val bypass_en = bypassMsg(i).valid
-        val idx = bypassMsg(i).bits.uop.ldq_idx
-        ldq(idx).data := Mux(bypass_en,bypassMsg(i).bits.data,ldq(idx).data)
-        ldq(idx).mask := Mux(bypass_en,bypassMsg(i).bits.mask,ldq(idx).mask)
-    }
 
 
 //////////////////////refill//////////////////////
@@ -226,7 +225,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
             splitData(i) := Mux(ldq_mask(i)===1.U,ldq_data((i+1)*8-1,i*8),refill_data((i+1)*8-1,i*8)) 
         }
         final_data := Cat(splitData.map(_.asUInt).reverse)
-        when(refill_sels(i)&&(ldq(i).flag.allocated)){
+        when(refill_sels(i)&&(ldq(i).flag.allocated)&&(ldq(i).flag.miss)){
             ldq(i).flag.miss := false.B
             ldq(i).flag.datavalid :=true.B
             ldq(i).data := final_data
@@ -270,11 +269,9 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val st_rob_idx = io.check_unorder.bits.uop.rob_idx
     val checkSels = VecInit(ldq.map{i=>
             
-            val isOlder = st_rob_idx(log2Ceil(ROBEntry))===i.uop.rob_idx(log2Ceil(ROBEntry))&&
-                        st_rob_idx(log2Ceil(ROBEntry)-1,0)<i.uop.rob_idx(log2Ceil(ROBEntry)-1,0)||
-                        st_rob_idx(log2Ceil(ROBEntry))=/=i.uop.rob_idx(log2Ceil(ROBEntry))&&
-                        st_rob_idx(log2Ceil(ROBEntry)-1,0)>i.uop.rob_idx(log2Ceil(ROBEntry)-1,0)
-            i.addr===io.check_unorder.bits.check_addr&&io.check_unorder.valid&&i.flag.wb_valid&&isOlder
+
+            i.addr===io.check_unorder.bits.check_addr&&io.check_unorder.valid&&i.flag.wb_valid&&
+                        isOlder(st_rob_idx,i.uop.rob_idx,log2Ceil(ROBEntry+1))
         }) 
     val unorder_idx = PriorityEncoder(checkSels)
     io.check_resp.redirect := checkSels.reduce(_||_)

@@ -81,8 +81,42 @@ trait HasGRVParameters {
 
 
     val DCacheParam = p(DCacheKey)
-
-
+    def GetPtrMask(ptr:UInt,size:Int):UInt={
+        return ptr(size-1)
+    }
+    def GetPtrVal(ptr:UInt,size:Int):UInt={
+        return ptr(size-2,0)
+    }
+    def isOlder(idx1:UInt,idx2:UInt,size:Int):Bool={
+        // val size = 
+        GetPtrMask(idx1,size)===GetPtrMask(idx2,size)&&
+        GetPtrVal(idx1,size)<GetPtrVal(idx2,size)||
+        GetPtrMask(idx1,size)=/=GetPtrMask(idx2,size)&&
+        GetPtrVal(idx1,size)>GetPtrVal(idx2,size)
+    }
+    def findMax(values: Vec[UInt]): UInt = {
+        if (values.length == 1) {
+            values(0)
+        } else {
+            val mid = values.length / 2
+            val leftMax = findMax(VecInit(values.slice(0, mid))) 
+            val rightMax = findMax(VecInit(values.slice(mid, values.length))) 
+            Mux(leftMax > rightMax, leftMax, rightMax)
+        }
+    }
+    def findOldest(idx: Vec[UInt],vld:Vec[Bool],size:Int): (UInt,Bool) = {
+        if (idx.length == 1) {
+            (idx(0),vld(0))
+        } else {
+            assert(((idx.length)%2).U===0.U,"only support pow 2")
+            val mid = idx.length / 2
+            val (leftMax,leftvld) = findOldest(VecInit(idx.slice(0, mid)),VecInit(vld.slice(0, mid)),size) 
+            val (rightMax,rightvld) = findOldest(VecInit(idx.slice(mid, idx.length)),VecInit(vld.slice(mid, idx.length)),size) 
+            (Mux(leftvld&&rightvld,
+            Mux(isOlder(leftMax,rightMax,size),leftMax,rightMax),
+            Mux(leftvld,leftMax,rightMax)),leftvld||rightvld)
+        }
+    }
 }
 class BaseConfig extends Config((site, here, up) => {
     case CoreKey => CoreParams()

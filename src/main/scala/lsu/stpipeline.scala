@@ -48,7 +48,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val s0_mask  = Mux(s0_uop.mem_size===0.U,"b0001".U,
                 Mux(s0_uop.mem_size===1.U,"b0011".U,"b1111".U))
     val s0_align_mask = s0_mask<<s0_offset
-
+    dontTouch(s0_waddr)
     // val s1_replay= RegNext(s0_replay)//目前没有replay的请求
     val s1_valid = RegNext(s0_valid&(!io.flush))
     val s1_waddr = RegNext(s0_waddr)

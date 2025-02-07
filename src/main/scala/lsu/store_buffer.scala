@@ -91,8 +91,8 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     }
     val timeout = timeout_sels.reduce(_||_)
     val timeout_idx = PriorityEncoder(timeout_sels)
-    val alloc_ops= store_buf.map{buf=>
-        buf.flag.valid&&(!buf.flag.timeout)&&(!buf.flag.inflight)&&(!buf.flag.same_inflight)
+    val alloc_ops= store_buf zip enq_merge_sels map{case(buf,sels)=>
+        buf.flag.valid&&(!buf.flag.timeout)&&(!buf.flag.inflight)&&(!buf.flag.same_inflight)&&(!sels)
     }
     val alloc_sels = PriorityEncoderOH(alloc_ops)
     val alloc_idx = PriorityEncoder(alloc_sels)
@@ -117,7 +117,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val resp_hit   = io.dcache_write.resp.bits.hit
     val resp_addr  = io.dcache_write.resp.bits.addr
     val resp_success = resp_valid&&resp_hit
-    val resp_replay = resp_valid&&io.dcache_write.resp.bits.replay
+    val resp_replay  = resp_valid&&io.dcache_write.resp.bits.replay
     //only one
     val resp_sels  = WireInit(VecInit(store_buf.map{buf=>
         buf.flag.inflight&&buf.addr===resp_addr
@@ -150,8 +150,9 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     for(i<- 0 until numSBs){
         
 
-
+        //当写入的同时状态变为inflight，这时的写入信息会丢失，目前做法是当有merge信号时，不许发出写入dcache请求
         val resp_op     = (resp_sels(i)&&resp_success)
+        val resp_replay_op = resp_sels(i)&resp_replay
         val refill_op   = (refill_valid&&refill_sels(i))
         val enq_allocate_valid = enq_allocate_sels(i)
         val enq_merge_valid    = enq_merge_sels(i)
@@ -161,7 +162,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
                                         Mux(enq_merge_valid,Cat(SplitData.map(_.asUInt).reverse),store_buf(i).data(enq_bank)))
         //ctrl
         store_buf(i).retry_cnt          := Mux(store_buf(i).flag.timeout,store_buf(i).retry_cnt+1.U,0.U)
-        store_buf(i).flag.inflight      := Mux((resp_op||resp_replay)||refill_op,false.B,
+        store_buf(i).flag.inflight      := Mux((resp_op||resp_replay_op)||refill_op,false.B,
                                             Mux(timeout_sels(i)&&timeout&&do_deq,true.B,
                                             Mux(alloc_sels(i)&&(!timeout)&&do_deq,true.B,store_buf(i).flag.inflight ))) 
         
@@ -173,7 +174,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
             Mux(enq_allocate_valid&&is_enq_bank,enq_mask,
             Mux(enq_merge_valid&&is_enq_bank,enq_mask|sb_mask,store_buf(i).mask(j))))
         }
-        store_buf(i).flag.timeout       := Mux(resp_sels(i)&&resp_replay ,true.B ,
+        store_buf(i).flag.timeout       := Mux(resp_replay_op,true.B ,
                                         Mux(resp_op||refill_op||store_buf(i).retry_cnt===timeOut,false.B,store_buf(i).flag.timeout)) 
 
         store_buf(i).flag.same_inflight := Mux((resp_sels(i)||resp_sameblock_sels(i))&&resp_success||refill_op,
@@ -213,7 +214,7 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
         io.search_resp(i).valid    := forward_sels_valid.reduce(_||_)
         io.search_resp(i).bits.data:= Mux(forward_has_same_entry,Cat(final_data.map(_.asUInt).reverse),valid_data)
         io.search_resp(i).bits.mask:= Mux(forward_has_same_entry,inflight_mask|wait_same_mask,valid_mask)
-        io.search_resp(i).bits.uop := 0.U.asTypeOf(new MicroOp)
+        io.search_resp(i).bits.ldq_idx := 0.U
 
     }
 
