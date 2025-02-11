@@ -36,7 +36,7 @@ class ALUExuUnit(
     hasDIV:Boolean=false,
     hasCSR:Boolean=false,
 )(implicit p: Parameters)extends GRVModule{
-    val imulLatency = 3
+    val imulLatency = 2
     val iresp_fu_units = ArrayBuffer[FunctionalUnit]()
     def length = iresp_fu_units.length
     val numIrfReadPorts = Seq(hasALU,hasDIV,hasMUL,hasJMP,hasCSR).count(identity)

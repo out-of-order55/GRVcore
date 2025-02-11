@@ -194,19 +194,25 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
         val idx = bypassMsg(i).bits.ldq_idx
         ldq(idx).data                 := Mux(bypass_en,bypassMsg(i).bits.data,ldq(idx).data)
         ldq(idx).mask                 := Mux(io.flush||s2_valid(i),0.U,Mux(bypass_en&&s2_miss(i),bypassMsg(i).bits.mask,ldq(idx).mask))
-        ldq(s2_idx(i)).flag.datavalid := Mux(s2_valid(i),true.B,ldq(s2_idx(i)).flag.datavalid)
-        ldq(s2_idx(i)).flag.wb_valid  := Mux(s2_valid(i),true.B,ldq(s2_idx(i)).flag.wb_valid)
-        ldq(s2_idx(i)).flag.miss      := Mux(s2_miss(i),true.B,ldq(s2_idx(i)).flag.miss)
+        when(s2_valid(i)){
+            ldq(s2_idx(i)).flag.datavalid := true.B
+            ldq(s2_idx(i)).flag.wb_valid := true.B
+            
+        }
+        when(s2_miss(i)){
+            ldq(s2_idx(i)).flag.miss := true.B
+        }
+
     }
 
 
 
 
 //////////////////////refill//////////////////////
-    val refill_sels = ldq.map{ldq=>
+    val refill_sels = VecInit(ldq.map{ldq=>
         BankAlign(ldq.addr)===io.refillMsg.refill_addr&&io.refillMsg.refilled
-    }
-    
+    })
+    dontTouch(refill_sels)
     //refill的数据mask总是全为1
 
 

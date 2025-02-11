@@ -123,13 +123,15 @@ verilog:
 # 	cp -f $(GenerateV) $(WORK_DIR)/vsrc; \
 # fi
 # @rm -r $(VERILOG_FILE)
-
+BASE_IMG= $(notdir $(IMG))
+SERVER_IMG = $(WORK_DIR)/image/$(BASE_IMG)
 debug :
 	@echo "---------------- GENERATE VERILOG ----------------"
 # @VERILATOR_ROOT
 	@mkdir -p $(VERILOG_FILE)/rtl &&mkdir -p $(VERILOG_FILE)/vcd
-	@exec > >(tee $(VERILOG_FILE)/debug.log) 2>&1 
-	@sh ./wave.sh 2>&1 | tee $(VERILOG_FILE)/debug.log || exit 1
+	@exec > >(tee $(VERILOG_FILE)/debug.log) 2>&1
+	@cp $(IMG) $(WORK_DIR)/image
+	@sh ./wave.sh $(BASE_IMG) 2>&1 | tee $(VERILOG_FILE)/debug.log || exit 1
 
 	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/vcd/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 # @rm  -r $(VERILOG_FILE)
@@ -148,7 +150,10 @@ run:sim
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
-	
+server:sim 
+	@echo $(ARGS)
+	@echo "--------------------- RUN -------------------"
+	$(BINARY) $(ARGS) $(SERVER_IMG) +trace
 
 
 ###############################VCS############################

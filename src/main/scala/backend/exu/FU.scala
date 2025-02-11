@@ -213,8 +213,8 @@ extends FunctionalUnit(
     }
 
     imul.io.req.valid    := io.req.valid
-    imul.io.req.bits.fn  := io.req.bits.uop.ctrl.fcn_dw
-    imul.io.req.bits.dw  := io.req.bits.uop.ctrl.op_fcn
+    imul.io.req.bits.fn  := io.req.bits.uop.ctrl.op_fcn
+    imul.io.req.bits.dw  := io.req.bits.uop.ctrl.fcn_dw
     imul.io.req.bits.in1 := io.req.bits.rs1_data
     imul.io.req.bits.in2 := io.req.bits.rs2_data
     imul.io.req.bits.tag := DontCare

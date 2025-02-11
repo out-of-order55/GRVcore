@@ -286,7 +286,7 @@ static long load_img() {
   printf("The image is %s, size = %ld\n", img_file, size);
 
   fseek(fp, 0, SEEK_SET);
-  int ret = fread(mem, size, 1, fp);
+  int ret = fread(sram, size, 1, fp);
   assert(ret == 1);
 
   fclose(fp);
@@ -376,7 +376,7 @@ void init_npc(int argc, char** argv){
                                 "bad"))) "-pc-linux-gnu"
     ));
   #endif
-  long img_size=UT_Init();
+  long img_size=load_img();
   cpu.pc=RESET_VECTOR;
   welcome();
   TimeInit();

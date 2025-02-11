@@ -114,10 +114,19 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
 
     //异常信息必须和之前的比较谁旧
     val commit_exc_msg   = RegInit(0.U.asTypeOf(Valid(new CommitExcMsg)))
-    val is_exc_older  = (!commit_exc_msg.valid)&&((!br_update.valid)||
-                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1)))||
-                        (commit_exc_msg.valid&&io.lsu_exc.valid&&isOlder(io.lsu_exc.bits.uops.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1))&&
-                        isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1)))
+    val exc_older_than_exc_r = isOlder(io.lsu_exc.bits.uops.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1)) 
+    val exc_older_than_br_i  = isOlder(io.lsu_exc.bits.uops.rob_idx,br_info.bits.uop.rob_idx,log2Ceil(ROBEntry+1))
+    val exc_older_than_br_r  = isOlder(io.lsu_exc.bits.uops.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1))
+    val is_exc_older  = (io.lsu_exc.valid)&&(
+                        (!commit_exc_msg.valid)&&(!br_update.valid)&&(!br_info.valid)||
+                        (!commit_exc_msg.valid)&&(!br_update.valid)&&(br_info.valid&&exc_older_than_br_i)||
+                        (!commit_exc_msg.valid)&&(br_update.valid)&&(!br_info.valid)&&exc_older_than_br_r||
+                        (!commit_exc_msg.valid)&&(br_update.valid)&&(br_info.valid&&exc_older_than_br_i&&exc_older_than_br_r)||
+                        (commit_exc_msg.valid)&&(!br_update.valid)&&(!br_info.valid)&&exc_older_than_exc_r||
+                        (commit_exc_msg.valid)&&(!br_update.valid)&&(br_info.valid&&exc_older_than_br_i&&exc_older_than_exc_r)||
+                        (commit_exc_msg.valid)&&(br_update.valid)&&(!br_info.valid)&&exc_older_than_br_r&&exc_older_than_exc_r||
+                        (commit_exc_msg.valid)&&(br_update.valid)&&(br_info.valid&&exc_older_than_br_i&&exc_older_than_exc_r&&exc_older_than_br_r)
+                        )
     
     exc_msg.valid           := io.lsu_exc.valid&&is_exc_older
     exc_msg.bits.ftq_idx    := io.lsu_exc.bits.uops.ftq_idx
@@ -152,11 +161,23 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     io.enq_idxs:= DontCare
     io.flush := DontCare
     io.flush.valid := false.B
-    
-    val is_flush_older = (!br_update.valid)&&(!commit_exc_msg.valid)||
-                        (!br_update.valid)&&isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1))||
-                        (br_update.valid&&isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1))&&
-                        isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1))) 
+    /*  
+    br_info需要和之前的比较，谁更旧，谁就是最旧的，此时可以记录异常
+    */
+    val br_older_than_exc_r = isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1)) 
+    val br_older_than_exc_i = isOlder(br_info.bits.uop.rob_idx,io.lsu_exc.bits.uops.rob_idx,log2Ceil(ROBEntry+1))
+    val br_older_than_br_r  = isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1))
+    val is_flush_older = (br_info.valid)&&(
+                        (!commit_exc_msg.valid)&&(!br_update.valid)&&(!io.lsu_exc.valid)||
+                        (!commit_exc_msg.valid)&&(!br_update.valid)&&(io.lsu_exc.valid&&br_older_than_exc_i)||
+                        (!commit_exc_msg.valid)&&(br_update.valid)&&(!io.lsu_exc.valid)&&br_older_than_br_r||
+                        (!commit_exc_msg.valid)&&(br_update.valid)&&(io.lsu_exc.valid&&br_older_than_exc_i&&br_older_than_br_r)||
+                        (commit_exc_msg.valid)&&(!br_update.valid)&&(!io.lsu_exc.valid)&&br_older_than_exc_r||
+                        (commit_exc_msg.valid)&&(!br_update.valid)&&(io.lsu_exc.valid&&br_older_than_exc_i&&br_older_than_exc_r)||
+                        (commit_exc_msg.valid)&&(br_update.valid)&&(!io.lsu_exc.valid)&&br_older_than_br_r&&br_older_than_exc_r||
+                        (commit_exc_msg.valid)&&(br_update.valid)&&(io.lsu_exc.valid&&br_older_than_exc_i&&br_older_than_exc_r&&br_older_than_br_r)
+                        )
+
     flush := br_info.bits.cfi_mispredicted&&br_info.valid&&is_flush_older
 
 
@@ -170,6 +191,8 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         //enq
         when(do_enq(i)){
             // rob_entry(i)(rob_enq_val).finish := false.B
+            enq_info.uops(i).bits.rob_idx := io.enq_idxs(i).bits
+
             rob_entry(i)(rob_enq_val).valid := enq_info.uops(i).valid
             rob_entry(i)(rob_enq_val).uop   := enq_info.uops(i).bits
             io.enq_idxs(i).bits := Cat(rob_enq_mask,(rob_enq_val<<log2Ceil(coreWidth)) + i.U)
@@ -297,3 +320,4 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
 
 
 }
+
