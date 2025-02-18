@@ -183,7 +183,7 @@ class ReplayIssueEntry(val numWakeupPorts: Int,val replayPort:Int,val HasReplay:
             rpy.replay&&rpy.uop.rob_idx===entry.uop.rob_idx&&entry.flag.allocated 
         }.reduce(_||_)
 
-        val can_allocate = (!entry.flag.allocated)||(can_commit&&entry.flag.allocated)
+        // val can_allocate = (!entry.flag.allocated)||(can_commit&&entry.flag.allocated)
         val can_enq = can_allocate&io.dis_uop.valid
         io.can_allocate := can_allocate
         entry.uop := Mux(can_enq,io.dis_uop.bits,entry.uop)
@@ -196,7 +196,7 @@ class ReplayIssueEntry(val numWakeupPorts: Int,val replayPort:Int,val HasReplay:
         entry.flag.issued    := Mux(io.flush||can_commit||replay,false.B,
                         Mux(entry.flag.allocated&&(io.grant),true.B,entry.flag.issued))
     }else{
-        val can_allocate = ((entry.flag.allocated&&io.grant)||(!entry.flag.allocated))
+        // val can_allocate = ((entry.flag.allocated&&io.grant)||(!entry.flag.allocated))
         val can_enq = can_allocate&io.dis_uop.valid
         io.can_allocate := can_allocate
         entry.uop := Mux(can_enq,io.dis_uop.bits,entry.uop)

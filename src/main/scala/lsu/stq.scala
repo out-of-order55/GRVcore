@@ -157,18 +157,24 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val forward_addr = io.search_req.addr
 
 
-    val forward_sels = VecInit(forward_addr.map{addr=>
+    val forward_sels = VecInit((io.search_req.addr zip io.search_req.rob_idx)map{case(addr,rob_idx)=>
         VecInit(stq.map{q=>
-            q.addr===addr.bits&&q.flag.allocated&&q.flag.addrvalid&&addr.valid&&q.flag.datavalid
+            q.addr===addr.bits&&q.flag.allocated&&q.flag.addrvalid&&addr.valid&&q.flag.datavalid&&
+            isOlder(q.uop.rob_idx,rob_idx,log2Ceil(ROBEntry+1))
         })
     })
     val stq_rob_idx = VecInit(stq.map(_.uop.rob_idx))
 
     val forward_idxs = Wire(Vec(numReadport,UInt(log2Ceil(numSTQs).W)))
     val forward_vld  = Wire(Vec(numReadport,Bool()))
+    dontTouch(forward_idxs)
+    dontTouch(forward_vld)
+    //这里有问题，我们要找的是最近一个写入该地址的stq表项，也就是满足条件中，最年轻的一个
     for(i <- 0 until numReadport){
         val (idx,vld) = findOldest(stq_rob_idx,forward_sels(i),log2Ceil(ROBEntry+1))
-        forward_idxs(i) := idx
+        val rob_maps  = stq.map{i=>i.uop.rob_idx===idx&&i.flag.allocated&&i.flag.addrvalid&&i.flag.datavalid}
+        assert(PopCount(rob_maps)<=1.U)
+        forward_idxs(i) := PriorityEncoder(rob_maps)
         forward_vld(i)  := vld
     }
 

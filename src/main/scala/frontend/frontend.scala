@@ -205,22 +205,40 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     val s3_clear = WireInit(false.B)
     val s3 = withReset(reset.asBool || s3_clear) {
         Module(new Queue(new FrontendInfo, 1, pipe=true, flow=false)) }
+    
+    class S3_Bundle  extends Bundle{
+        val bp_resp = new BranchPredictionBundle
+        val bp_mask = UInt(fetchWidth.W)
+    }
+    val s3_bp_info = withReset(reset.asBool || s3_clear) {
+        Module(new Queue(new S3_Bundle, 1, pipe=true, flow=true)) }
     val s4_ready = Wire(Bool())
+    val s3_bp_msg = Wire(new S3_Bundle)
+    val s3_resp         = s3.io.deq.bits
     s3.io.enq.valid := s2_valid && (!s2_notReady)&&(!s2_clear)
+    val s3_taken_i   =  VecInit(PriorityEncoderOH(bp.io.resp.f3.preds.map{resp=>
+        resp.taken&resp.predicted_pc.valid
+    })).asUInt
+
+    s3_bp_msg.bp_resp := bp.io.resp.f3
+    s3_bp_msg.bp_mask := s3_resp.mask&MaskLower(s3_taken_i)
+    s3_bp_info.io.enq.valid := s3.io.deq.valid
+    s3_bp_info.io.enq.bits  := s3_bp_msg
+    
     s3_ready        := s3.io.enq.ready
     s3.io.enq.bits.pc  := s2_vpc
     s3.io.enq.bits.inst:= s2_inst.data
     s3.io.enq.bits.mask:= s2_mask 
     s3.io.enq.bits.ghist:= 0.U//not use now
     s3.io.deq.ready     := s4_ready
+    s3_bp_info.io.deq.ready     := s4_ready
 
-    val s3_resp         = s3.io.deq.bits
 //s3目前无分支预测，仅仅传送分支预测信息
-    val s3_bp_resp =  WireInit(bp.io.resp.f3)
-    val s3_taken   =  s3_bp_resp.preds.map{resp=>
+    val s3_bp_resp =  WireInit(s3_bp_info.io.deq.bits.bp_resp)
+    val s3_taken_o   =  s3_bp_resp.preds.map{resp=>
         resp.taken&resp.predicted_pc.valid
     }
-    val s3_taken_idx = PriorityEncoder(s3_taken)
+    val s3_taken_idx = PriorityEncoder(s3_taken_o)
 //////////////////////s4///////////////////////
 
 /* 
@@ -234,8 +252,13 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     s4_ready := ibuf.io.enq.ready&ftq.io.enq.ready&((!s3_clear))
 
     val s3_fetch_bundle  = Wire(new FetchBundle)
+    //分支预测完需要修改mask
+
+    val s3_mask                 = Mux(s3_taken_o.reduce(_||_),s3_bp_info.io.deq.bits.bp_mask,s3_resp.mask)
+                                    
+
     s3_fetch_bundle.pc          := s3_resp.pc
-    s3_fetch_bundle.mask        := s3_resp.mask
+    s3_fetch_bundle.mask        := s3_mask
     s3_fetch_bundle.insts       := s3_resp.inst
     s3_fetch_bundle.ghist       := s3_resp.ghist
     s3_fetch_bundle.cfi_idx.valid:=s3_bp_resp.preds(s3_taken_idx).taken&&s3.io.deq.valid &&s3_bp_resp.preds(s3_taken_idx).predicted_pc.valid&&HasBP.B
@@ -248,7 +271,7 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
     s3_fetch_bundle.bpd_meta    := s3_bp_resp.meta
     s3_fetch_bundle.ftq_idx     := ftq.io.enq_idx
     s3_fetch_bundle.bpSrc       := 0.U
-
+    dontTouch(s3_fetch_bundle)
     ftq.io.enq.bits := s3_fetch_bundle
     ibuf.io.enq.bits:= s3_fetch_bundle
 

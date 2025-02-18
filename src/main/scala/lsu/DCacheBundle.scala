@@ -75,7 +75,10 @@ class RefillMsg(implicit p: Parameters)extends GRVBundle with HasDCacheParameter
     val refillData    = Vec(bankNum,UInt(XLEN.W))
     val refillWay     = UInt(nWays.W)
 } 
-
+class BypassMsg(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
+    val valid          = Bool()
+    val bypass_data    = Vec(bankNum,UInt(XLEN.W))
+} 
 class replaceReq(implicit p: Parameters)extends GRVBundle with HasDCacheParameters{
 
 	val idx         = Output(UInt(indexWidth.W))

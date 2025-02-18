@@ -120,6 +120,8 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     s1_btb_meta         :=  meta.io.dataOut 
 
 
+    //这里idx会出错，因为update和流水线阶段会起冲突，且update优先级更高，所以如果出现这个情况，则不用bp的结果（因为可能读取的不是想要的）
+    
     for (w <- 0 until bankNum) { 
         val update_valid =  (s1_update.valid && s1_update.bits.is_commit_update)
         val idx   =  Mux(doing_reset,reset_idx, Mux(update_valid,s1_update_index,Mux(s0_valid,s0_idx,0.U))) 
@@ -131,7 +133,7 @@ class BTBBranchPredictor(implicit p: Parameters) extends BasePredictor()(p){
     }
     // s2_req_rdata := DontCare
     for(w <- 0 until bankNum){
-        io.resp.f2(w).predicted_pc.bits := (s2_req_rdata(w).offset.asSInt + (s2_pc + (PopCount(~s2_mask(bankNum-1,0))<<2)).asSInt).asUInt
+        io.resp.f2(w).predicted_pc.bits := (s2_req_rdata(w).offset.asSInt + (s2_pc + (w<<2).U).asSInt).asUInt
         io.resp.f2(w).predicted_pc.valid:= s2_req_rdata(w).br_type=/=0.U&s2_hit
         io.resp.f2(w).br_type           := s2_req_rdata(w).br_type
         // io.resp.f2(w).is_br        := s2_req_rdata(w).is_br

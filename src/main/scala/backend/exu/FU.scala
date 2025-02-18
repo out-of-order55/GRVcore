@@ -189,7 +189,7 @@ extends FunctionalUnit(
     brinfo.cfi_type         := uop.br_type
     brinfo.is_jal           := is_jal
     brinfo.is_jalr          := is_jalr
-    brinfo.target           := target_XLEN
+    brinfo.target           := Mux(is_taken,target_XLEN,uop_pc+4.U)
 
     io.brinfo.valid:= (io.req.fire)&&(uop.uopc=/=uopAUIPC)&&(!killed)
     io.brinfo.bits := brinfo

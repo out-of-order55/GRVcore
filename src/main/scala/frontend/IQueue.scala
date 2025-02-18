@@ -75,7 +75,7 @@ class IQueue(implicit p: Parameters) extends GRVModule with HasFrontendParameter
         // Mux(enq_ptr>=deq_ptr,enq_ptr-deq_ptr,iqentries.U-(deq_ptr-enq_ptr))
     //满的判断需要不仅在本周期判断：也要在上周期判断，然后寄存下来到本周期
     
-    full := (enq_ptr(iqSz)=/=deq_ptr(iqSz)&&(numEnq+enq_ptr)(iqSz-1,0)>deq_ptr(iqSz-1,0))||
+    full := (iqentries.U-numValid<numEnq)||
     numValid===iqentries.U
     // assert(numValid>iqentries.U,"IQ overflow")
     dontTouch(full)

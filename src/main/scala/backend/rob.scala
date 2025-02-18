@@ -151,7 +151,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     full := (rob_enq_val===rob_deq_val)&&(rob_enq_mask=/=rob_deq_mask)
     dontTouch(full)
     io.enq.uops.foreach{i=>
-        i.ready := (!full)&&(rob_state===s_normal)
+        i.ready := (!full)&&(rob_state===s_normal)&&(PopCount(io.enq.uops.map(_.valid))===coreWidth.U)
         } 
     io.commit:= DontCare
     for(i<- 0 until coreWidth){
@@ -186,7 +186,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     dontTouch(is_flush_older)
     val enq_idxs    = VecInit.tabulate(coreWidth)(i => PopCount(do_enq.take(i)))
     val enq_offset  = VecInit(enq_idxs.map(_+rob_enq_val))
-    assert(PopCount(do_enq)===0.U||PopCount(do_enq)===coreWidth.U,"rob enq not fully")
+    // assert(PopCount(do_enq)===0.U||PopCount(do_enq)===coreWidth.U,"rob enq not fully")
     for(i <- 0 until coreWidth){
         //enq
         when(do_enq(i)){

@@ -128,6 +128,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val ldq = RegInit(VecInit.fill(numLDQs)(0.U.asTypeOf(new LDQEntry)))
     val ldq_enq_ptr  = RegInit(0.U(log2Ceil(numLDQs+1).W))
     val ldq_deq_ptr  = RegInit(0.U(log2Ceil(numLDQs+1).W))
+    dontTouch(ldq_deq_ptr)
     val numValid = PopCount(ldq.map(_.flag.allocated))
     val numEnq = PopCount(io.dis.enq.map{i=>i.valid&&i.bits.mem_cmd===M_XRD})
 
@@ -139,7 +140,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     
     val enqNextPtr = ldq_enq_ptr+numEnq
 	val deqNextPtr = ldq_deq_ptr+numDeq
-    val full = (ldq_enq_ptr(ldqSz)=/=ldq_deq_ptr(ldqSz)&&(numEnq+ldq_enq_ptr)(ldqSz-1,0)>ldq_deq_ptr(ldqSz-1,0))||
+    val full = (numLDQs.U-numValid<numEnq)||
     numValid===numLDQs.U
 	val empty = (ldq_enq_ptr(ldqSz)===ldq_deq_ptr(ldqSz))&&ldq_enq_ptr(ldqSz-1,0)===ldq_deq_ptr(ldqSz-1,0)
     
@@ -149,7 +150,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     when(io.flush){
         ldq_enq_ptr := 0.U
     }
-    .elsewhen(numEnq.orR){
+    .elsewhen(numEnq.orR&&(!full)){
         ldq_enq_ptr := ldq_enq_ptr + numEnq
     }
     val enq_idxs = VecInit.tabulate(coreWidth)(i => PopCount(io.dis.enq.map{i=>i.fire&&i.bits.mem_cmd===M_XRD}.take(i)))
@@ -159,12 +160,12 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
 
     for(i <- 0 until coreWidth){
         val do_enq = io.dis.enq(i).fire&&io.dis.enq(i).bits.mem_cmd===M_XRD
-        for(j <- 0 until numLDQs){
-            when(do_enq&&enq_offset(i)===j.U){
-                ldq(j).flag.allocated := true.B
-                // ldq(j).uop := io.dis.enq(i).bits
-            }
-        }
+        // for(j <- 0 until numLDQs){
+        //     when(do_enq&&enq_offset(i)===j.U){
+        //         ldq(j).flag.allocated := true.B
+        //         // ldq(j).uop := io.dis.enq(i).bits
+        //     }
+        // }
         io.dis.enq_idx(i).bits := enq_offset(i)
         io.dis.enq_idx(i).valid:= do_enq
     }
@@ -173,15 +174,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val s0_waddr    = io.pipe.s0_addr
     val s0_valid    = io.pipe.s0_uop.map(_.valid)
     val s0_idx      = io.pipe.s0_uop.map(_.bits.ldq_idx)
-    dontTouch(VecInit(s0_idx))
-    dontTouch(s0_waddr)
-    for(i <- 0 until numReadport){
-        when(s0_valid(i)){
-            ldq(s0_idx(i)).uop := io.pipe.s0_uop(i).bits
-            ldq(s0_idx(i)).addr := s0_waddr(i)
-        }
-    }
-    //forward data
+
+
 //bug
     val bypassMsg =WireInit(io.search_resp)
 
@@ -189,21 +183,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val s2_valid    = io.pipe.s2_wb_req//not miss
     val s2_idx      = io.pipe.s2_uop.map(_.ldq_idx)
     val s2_miss     = io.pipe.s2_miss
-    for(i <- 0 until numReadport){
-        val bypass_en = bypassMsg(i).valid
-        val idx = bypassMsg(i).bits.ldq_idx
-        ldq(idx).data                 := Mux(bypass_en,bypassMsg(i).bits.data,ldq(idx).data)
-        ldq(idx).mask                 := Mux(io.flush||s2_valid(i),0.U,Mux(bypass_en&&s2_miss(i),bypassMsg(i).bits.mask,ldq(idx).mask))
-        when(s2_valid(i)){
-            ldq(s2_idx(i)).flag.datavalid := true.B
-            ldq(s2_idx(i)).flag.wb_valid := true.B
-            
-        }
-        when(s2_miss(i)){
-            ldq(s2_idx(i)).flag.miss := true.B
-        }
 
-    }
 
 
 
@@ -213,32 +193,6 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
         BankAlign(ldq.addr)===io.refillMsg.refill_addr&&io.refillMsg.refilled
     })
     dontTouch(refill_sels)
-    //refill的数据mask总是全为1
-
-
-							
-    for(i<- 0 until numLDQs){
-        val refill_bank =  (ldq(i).addr)(offsetWidth-1,bankWidth)
-        val refill_data = io.refillMsg.refillData(refill_bank)
-        val final_data  = Wire(UInt(XLEN.W))
-        val ldq_data = ldq(i).data
-        val ldq_mask = ldq(i).mask
-
-        val splitData = Wire(Vec(XLEN/8,UInt(8.W)))
-        //32 to 8
-        
-        for(i<- 0 until XLEN/8){
-            splitData(i) := Mux(ldq_mask(i)===1.U,ldq_data((i+1)*8-1,i*8),refill_data((i+1)*8-1,i*8)) 
-        }
-        final_data := Cat(splitData.map(_.asUInt).reverse)
-        when(refill_sels(i)&&(ldq(i).flag.allocated)&&(ldq(i).flag.miss)){
-            ldq(i).flag.miss := false.B
-            ldq(i).flag.datavalid :=true.B
-            ldq(i).data := final_data
-        }
-    }
-
-////////////////////////////////////////
 
 ///////////////////wb//////////////////
     val wb_sels_resp  = VecInit(ldq.map{i=>i.flag.datavalid&(!i.flag.wb_valid)&(i.flag.allocated)})//只有datavalid&（！wbvalid）才说明这个是refill的load，正常的都是datavalid（wbvalid）同时拉高
@@ -252,19 +206,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
         val wb_sels = WireInit(Cat(ldq(wb_idx).uop.mem_signed.asUInt,ldq(wb_idx).uop.mem_size))
         dontTouch(wb_sels)
 
-        io.wb_resp(i).valid    := ldq(wb_idx).flag.datavalid
+        io.wb_resp(i).valid    := Mux(wb_selOH(i).orR,ldq(wb_idx).flag.datavalid,false.B)
         io.wb_resp(i).bits.uop := ldq(wb_idx).uop
         io.wb_resp(i).bits.wb_data := newRdataHelper(wb_sels,wb_data)
-        ldq(wb_idx).flag.wb_valid := Mux(wb_valid,true.B,ldq(wb_idx).flag.wb_valid)
-        ldq(wb_idx).flag.datavalid := Mux(wb_valid,false.B,ldq(wb_idx).flag.datavalid)
+
     }
 ////////////////commit/////////////////
-    for(i <- 0 until coreWidth){
-        val commit_idx = io.commit.commit_uops(i).ldq_idx
-        when(deq(i)){
-            ldq(commit_idx) := 0.U.asTypeOf(new LDQEntry) 
-        }
-    }
+
     when(io.flush){
         ldq_deq_ptr := 0.U
     }
@@ -282,10 +230,70 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val unorder_idx = PriorityEncoder(checkSels)
     io.check_resp.redirect := checkSels.reduce(_||_)
     io.check_resp.uop      := ldq(unorder_idx).uop
-//////////////////////////flush/////////////////
-    when(io.flush){
-        for(i <- 0 until numLDQs){
-            ldq(i).flag := 0.U.asTypeOf(new LDQFlag)
+
+
+///////////////////////////LDQ///////////////////////////
+
+    for(i<- 0 until numLDQs){
+        //dis
+        val ldq_enq_valid = (0 until coreWidth).map{j=>
+            io.dis.enq(j).fire&&io.dis.enq(j).bits.mem_cmd===M_XRD&&enq_offset(j)===i.U
+        }.reduce(_||_)
+        val ldq_deq_valid = (0 until coreWidth).map{j=>
+            deq(j)&&io.commit.commit_uops(j).ldq_idx===i.U
+        }.reduce(_||_)
+        dontTouch(ldq_deq_valid)
+        //s0
+        val ldq_s0_valid = (0 until numReadport).map{j=>
+            s0_valid(j)&&s0_idx(j)===i.U
         }
+        // assert(PopCount(ldq_s0_valid)<=1.U)
+        val ldq_s0_wuop = Mux1H(ldq_s0_valid,io.pipe.s0_uop.map(_.bits))
+        val ldq_s0_waddr= Mux1H(ldq_s0_valid,s0_waddr)
+        //bypass&s2
+        val ldq_s2_miss_valid = (0 until numReadport).map{j=>
+            s2_miss(j)&&s2_idx(j)===i.U
+        }
+        val ldq_s2_hit_valid = (0 until numReadport).map{j=>
+            io.pipe.s2_wb_req(j)&&s2_idx(j)===i.U
+        }
+        val ldq_bypass_valid = (0 until numReadport).map{j=>
+            bypassMsg(j).valid&&bypassMsg(j).bits.ldq_idx===i.U&&s2_miss(j)
+        }
+        val bypass_wdata = Mux1H(ldq_bypass_valid,bypassMsg.map(_.bits.data)) 
+        val bypass_wmask = Mux1H(ldq_bypass_valid,bypassMsg.map(_.bits.mask))
+        //refill
+        val refill_bank =  (ldq(i).addr)(offsetWidth-1,bankWidth)
+        val refill_data = io.refillMsg.refillData(refill_bank)
+        val final_data  = Wire(UInt(XLEN.W))
+        val ldq_data = ldq(i).data
+        val ldq_mask = ldq(i).mask
+
+        val splitData = Wire(Vec(XLEN/8,UInt(8.W)))
+        //32 to 8
+        val ldq_refill_valid = WireInit(refill_sels(i)&&(ldq(i).flag.allocated)&&(ldq(i).flag.miss))
+        for(i<- 0 until XLEN/8){
+            splitData(i) := Mux(ldq_mask(i)===1.U,ldq_data((i+1)*8-1,i*8),refill_data((i+1)*8-1,i*8)) 
+        }
+        final_data := Cat(splitData.map(_.asUInt).reverse)
+        //wb
+        val ldq_wb_valid = (0 until numReadport).map{j=>
+            io.wb_resp(j).fire&&wb_selOH(j)(i)
+        }.reduce(_||_)
+
+
+        ldq(i).data             := Mux(io.flush||ldq_deq_valid,0.U,
+                            Mux(ldq_refill_valid,final_data,Mux(ldq_bypass_valid.reduce(_||_),bypass_wdata,ldq(i).data)))
+        ldq(i).mask             := Mux(io.flush||ldq_deq_valid,0.U,Mux(ldq_bypass_valid.reduce(_||_),bypass_wmask,ldq(i).mask))
+        ldq(i).uop              := Mux(ldq_s0_valid.reduce(_||_),ldq_s0_wuop,ldq(i).uop)
+        ldq(i).addr             := Mux(ldq_s0_valid.reduce(_||_),ldq_s0_waddr,ldq(i).addr)
+
+        ldq(i).flag.miss        := Mux(io.flush||ldq_deq_valid||ldq_refill_valid,false.B,
+                                Mux(ldq_s2_miss_valid.reduce(_||_),true.B,ldq(i).flag.miss))
+        ldq(i).flag.wb_valid    := Mux(io.flush||ldq_deq_valid,false.B,
+                                Mux(ldq_s2_hit_valid.reduce(_||_)||ldq_wb_valid,true.B,ldq(i).flag.wb_valid))
+        ldq(i).flag.datavalid   := Mux(io.flush||ldq_deq_valid||ldq_wb_valid,false.B,
+                                Mux(ldq_refill_valid||ldq_s2_hit_valid.reduce(_||_),true.B,ldq(i).flag.datavalid))
+        ldq(i).flag.allocated   := Mux(io.flush||ldq_deq_valid,false.B,Mux(ldq_enq_valid,true.B,ldq(i).flag.allocated))
     }
 }

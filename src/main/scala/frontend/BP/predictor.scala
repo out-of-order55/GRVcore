@@ -108,10 +108,7 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val s2_mask      = RegNext(s1_mask)
     val s3_mask      = RegNext(s2_mask)
 
-    val s0_valid = io.f0_valid
-    val s1_valid = RegNext(s0_valid)
-    val s2_valid = RegNext(s1_valid)
-    val s3_valid = RegNext(s2_valid)
+
 
     val s0_pc = bankAlign(io.f0_pc)
     val s1_pc = RegNext(s0_pc)
@@ -124,7 +121,11 @@ abstract class BasePredictor(implicit p: Parameters) extends GRVModule with HasF
     val s1_update     = RegNext(s0_update)
     val s1_update_idx = RegNext(s0_update_idx)
     val s1_update_valid = RegNext(s0_update_valid)
-
+    
+    val s0_valid = io.f0_valid
+    val s1_valid = RegNext(s0_valid&&(!s1_update_valid))
+    val s2_valid = RegNext(s1_valid)
+    val s3_valid = RegNext(s2_valid)
 }
 
 class BranchPredictor(implicit p: Parameters) extends GRVModule()(p)

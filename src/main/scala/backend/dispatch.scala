@@ -58,7 +58,7 @@ class ComplexDispatcher(implicit p: Parameters) extends GRVModule{
         val compactor = Module(new Compactor(coreWidth,issueParam.dispatchWidth,new MicroOp))
         compactor.io.in<>ren
         dis<>compactor.io.out
-        ren_readys(i) := (ren zip iq_type).map{ case(a,b)=> a.ready || !b}
+        ren_readys(i) := (ren zip iq_type).map{ case(a,b)=> a.ready &&(b)}
     }
     dontTouch(ren_readys)
     

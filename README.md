@@ -68,6 +68,8 @@ GRVCore
 
 2024/2/6：完成昨天的问题1，并且修复了若干个bug，全部集中在lsu部分（修复mshr和sb的合并机制)
 
+2024/2/18：今天修复了rob和ibuf的full信号，dcache读取地址不正确（因为在bank冲突时没有对valid进行拉低)，修复了dispatch的一个bug（必须将iq的ready转发到ren_uop),修复了stqforward数据问题（之前forward的idx是rob_idx,现在当得到最旧的rob_idx,会根据这个idx找到相应的stq_idx)
+
 # Problem
 
 1. /home/gg/GRVCore//include/init.h:7:10: fatal error: Vtop__Dpi.h: No such file or directory: no verilog files use DPIC(must has at least one file uses DPIC)

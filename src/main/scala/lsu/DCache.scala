@@ -102,6 +102,7 @@ store buffer 会给出offset
 	miss并不会向下级发送写请求，只有replace才会发送写请求
 	只有在mshr向下级发送请求时候才会替换，这样虽然会降低性能，但是不用去维护一致性
 	 */
+
 class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParameters{
 
     val mshrSz 		  = log2Ceil(numMSHRs)
@@ -116,6 +117,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		val replace_req   = Decoupled(new replaceReq)//replace同时进行invalid
 		val replace_resp  = Flipped(Valid(new replaceResp))//regnext(req.fire)
 		val flush		  = Input(Bool())
+		val bypass 		  = Output(Vec(numReadport,new BypassMsg()))
 	})
 
     class MSHRFlag extends Bundle{
@@ -219,7 +221,7 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 				mshr.addr===io.missmsg(i).addr&&mshr.flag.valid
 			}.reduce(_||_)
 		
-		io.miss_replay(i)   := (io.full)||miss_same||(check_same&&(!merge_sels(i).reduce(_||_)))
+		io.miss_replay(i)   := ((io.full)||miss_same||(check_same&&(!merge_sels(i).reduce(_||_))))&&io.missmsg(i).miss
 
 
 		merge_req(i)		:= (!miss_same)&&merge_sels(i).reduce(_||_)
@@ -362,6 +364,13 @@ class DMissUnit(implicit p:Parameters) extends  GRVModule with HasDCacheParamete
 		for(j<- 0 until XLEN/8){
 			refillData(i)(j) := Mux(merge_bypass_mask(i)(j)===1.U,merge_bypass_data(i)(j),s_refillData(i)((j+1)*8-1,j*8) ) 
 		}
+	}
+
+
+	//如果merge请求同时mshr表象refilled，这时候就可以去将refilled数据bypass到dcache，并将miss去除
+	for(i <- 0 until numReadport){
+		io.bypass(i).valid 			:= io.refill.fire&&merge_bypass(i)
+		io.bypass(i).bypass_data  	:= io.refill.bits.refillData
 	}
 	dontTouch(refillData)
 	io.refill.valid := state===s_refill_end
@@ -515,8 +524,12 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	val s0_raddr  = io.read.map(_.req.bits.addr)
 	val s0_rmsg    = Wire(Vec(numReadport,Valid(new CacheMsg())))
 	
+	
+	io.refillMsg.refilled := refilled
+	io.refillMsg.refillWay:= refillWay
+	io.refillMsg.refillData:= refillData
+	io.refillMsg.refill_addr:= refill_addr
 
-	io.refillMsg := refill
 	val s0_wvalid = io.write.req.fire
 	val s0_waddr  = io.write.req.bits.addr
 	val s0_wdata  = io.write.req.bits.data
@@ -584,6 +597,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	}))
 	val s2_rhitData 	= RegNext(s1_rhitData)
 	val s2_missMsg 		= RegNext(s1_missMsg)
+	val miss_bypass     = WireInit(missunit.io.bypass)
 	// val missMsg         = WireInit(VecInit.fill(numReadport)(0.U.asTypeOf(new DCacheMissMsg())))
 //random替换算法
 	val rp = RegInit(0.U(log2Ceil(nWays).W))
@@ -591,10 +605,10 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
     
 
     s0_wmsg.bits := AddressSplitter(io.write.req.bits.addr)
-    s0_wmsg.valid:= io.write.req.valid
+    s0_wmsg.valid:= io.write.req.fire
 	for(i <- 0 until numReadport){
 		s0_rmsg(i).bits := AddressSplitter(io.read(i).req.bits.addr)
-		s0_rmsg(i).valid:= io.read(i).req.valid 
+		s0_rmsg(i).valid:= io.read(i).req.fire 
 	}
 	dontTouch(s0_rmsg)
 	// s0_bank_conflict := PopCount(s0_rmsg.map{i=>
@@ -664,13 +678,13 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 	for(i <- 0 until numReadport){
 		val idx = s2_rmsg(i).bits.bank
 		io.read(i).resp.valid 		:= s2_rvalid(i)
-		io.read(i).resp.bits.data	:= s2_rhitData(i)(idx)
-		io.read(i).resp.bits.hit	:= s2_rhit(i)&&s2_rvalid(i)
+		io.read(i).resp.bits.data	:= Mux(miss_bypass(i).valid,miss_bypass(i).bypass_data(idx),s2_rhitData(i)(idx))
+		io.read(i).resp.bits.hit	:= Mux(miss_bypass(i).valid,true.B,s2_rhit(i)&&s2_rvalid(i))
 		io.read(i).resp.bits.replay	:= missunit.io.miss_replay(i)&&s2_rvalid(i)
 	}
 	io.write.resp.valid 	:= s2_wvalid
 	io.write.resp.bits.addr := Cat(s2_wmsg.bits.tag,s2_wmsg.bits.index)<<offsetWidth
-	io.write.resp.bits.hit 	:= s2_whit.reduce(_||_)
+	io.write.resp.bits.hit 	:= Mux(miss_bypass(0).valid,true.B,s2_whit.reduce(_||_))
 	io.write.resp.bits.replay:= missunit.io.miss_replay(0)&&s2_wvalid
 
 
@@ -712,6 +726,7 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			val data_idx = Mux(refilled,refillMsg.index,
 							Mux(replaced,replaceMsg.idx,
 							Mux(s1_wvalid,s1_wmsg.bits.index,s0_ridx)))
+			dontTouch(s0_ridx)
 			val enable  = refilled||((s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced
 			val write	= refilled&&(i.U===refillWay)||data_wvalid&&s1_whit(i)
 			val w_data 	= Mux(refilled,refillData(j),s1_final_wdata(j))
