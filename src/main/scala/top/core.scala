@@ -6,6 +6,7 @@ import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 import org.chipsalliance.cde.config._
 import org.chipsalliance.cde.config._
+import freechips.rocketchip.tilelink.TLMessages.d
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 // RISC-V Processor Core
@@ -145,12 +146,12 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val rob_enq_ready = WireInit(VecInit.fill(intIssueParam.dispatchWidth)(false.B))
 
     val rob_enq_uop = WireInit(dispatcher.io.dis_uops)
-    val rob_enq_valid = WireInit(VecInit(dispatcher.io.dis_uops.map{i=>VecInit(i.map(_.valid))}))
+    val rob_enq_valid = WireInit(VecInit(dispatcher.io.dis_uops.map{i=>VecInit(i.map(_.fire))}))
     dontTouch(rob_enq_uop)
     for(i <- 0 until intIssueParam.dispatchWidth){
         val valid = VecInit(rob_enq_valid.map{j=> j(i)})
         val uop   = VecInit(rob_enq_uop.map{j=> j(i).bits})
-        val enq_uop = Mux1H(valid,uop)//这里有错误
+        val enq_uop = Mux1H(valid,uop)//
         dontTouch(enq_uop)
         // dontTouch(valid)
         rob.io.enq.uops(i).valid := valid.reduce(_||_)
@@ -162,15 +163,24 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val alu_uop = WireInit(dispatcher.io.dis_uops(int_iss_idx))
     val rob_idx= WireInit(rob.io.enq_idxs)
     val int_fu_type = Seq(alujmp_unit.io.fu_types,alu_unit.io.fu_types,muldiv_unit.io.fu_types)
-    val rob_ready = WireInit(rob.io.enq.uops.map(_.fire).reduce(_&&_))
+    // val rob_fire = WireInit(rob.io.enq.uops.map(_.fire).reduce(_&&_))
+    // val rob_ready = WireInit(rob.io.enq.uops.map(_.ready).reduce(_&&_))
+    val st_enq_ready = WireInit(VecInit(io.lsu.dis(0).enq.map(_.ready)))
+    val ld_enq_ready = WireInit(VecInit.fill(intIssueParam.dispatchWidth)(false.B))
+    val alu_enq_ready = WireInit(VecInit.fill(intIssueParam.dispatchWidth)(false.B))
+    val dis_all_ready = WireInit(VecInit.fill(intIssueParam.dispatchWidth)(false.B))
+
     for(i <- 0 until intIssueParam.dispatchWidth){
         alu_uop(i).bits.rob_idx := Mux(rob_idx(i).valid,rob_idx(i).bits,0.U)
         
-        int_iss_unit.io.dis_uops(i).valid   := alu_uop(i).valid&rob_ready
+        int_iss_unit.io.dis_uops(i).valid   := alu_uop(i).fire&&(!commit_flush.valid)
         int_iss_unit.io.dis_uops(i).bits    := alu_uop(i).bits
-        dispatcher.io.dis_uops(int_iss_idx)(i).ready := int_iss_unit.io.dis_uops(i).ready&&rob_enq_ready(i)
-        rob_enq_valid(int_iss_idx)(i)       := alu_uop(i).valid
+        dispatcher.io.dis_uops(int_iss_idx)(i).ready := dis_all_ready.reduce(_&&_)
+        rob_enq_valid(int_iss_idx)(i)       := alu_uop(i).fire&&(!commit_flush.valid)
     }
+    dontTouch(dis_all_ready)
+    dontTouch(st_enq_ready)
+    dontTouch(ld_enq_ready)
     rob_enq_uop(int_iss_idx) := alu_uop
     // int_iss_unit.io.dis_uops<> alu_uop
 //对于issue，需要rob&&stq&&ldq同时为valid
@@ -178,19 +188,18 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val st_iss_idx = issueParams.indexWhere(_.iqType == IQT_ST.litValue) 
     val st_uop = WireInit(dispatcher.io.dis_uops(st_iss_idx))
     val stq_idx= WireInit(io.lsu.dis(0).enq_idx)
-    val st_enq_ready = WireInit(VecInit(io.lsu.dis(0).enq.map(_.ready)))
 
     for(j <- 0 until stIssueParam.dispatchWidth){
         st_uop(j).bits.stq_idx := Mux(stq_idx(j).valid,stq_idx(j).bits,0.U)
         st_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
         // st_iss_unit.io.fu_using(j) := mem_fu_types
-        st_iss_unit.io.dis_uops(j).valid := st_uop(j).valid&rob_ready&&stq_idx(j).valid
+        st_iss_unit.io.dis_uops(j).valid := st_uop(j).fire&&(!commit_flush.valid)
         st_iss_unit.io.dis_uops(j).bits  := st_uop(j).bits
-        dispatcher.io.dis_uops(st_iss_idx)(j).ready := st_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)&&st_enq_ready(j)
+        dispatcher.io.dis_uops(st_iss_idx)(j).ready := dis_all_ready.reduce(_&&_)
 
-        io.lsu.dis(0).enq(j).valid := st_uop(j).valid
+        io.lsu.dis(0).enq(j).valid := st_uop(j).fire&&(!commit_flush.valid)
         io.lsu.dis(0).enq(j).bits  := st_uop(j).bits
-        rob_enq_valid(st_iss_idx)(j) := st_uop(j).valid&&stq_idx(j).valid
+        rob_enq_valid(st_iss_idx)(j) := st_uop(j).fire&&(!commit_flush.valid)
     }
     rob_enq_uop(st_iss_idx) := st_uop
     // st_iss_unit.io.dis_uops<>st_uop
@@ -200,21 +209,28 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     val ld_uop = WireInit(dispatcher.io.dis_uops(ld_iss_idx))
     val ldq_idx= WireInit(io.lsu.dis(1).enq_idx)
     val mem_fu_types = FU_MEM
-    val ld_enq_ready = WireInit(VecInit(io.lsu.dis(1).enq.map(_.ready)))
+    
     for(j <- 0 until ldIssueParam.dispatchWidth){
         ld_uop(j).bits.ldq_idx := Mux(ldq_idx(j).valid,ldq_idx(j).bits,0.U)
         ld_uop(j).bits.rob_idx := Mux(rob_idx(j).valid,rob_idx(j).bits,0.U)
-        ld_iss_unit.io.dis_uops(j).valid := ld_uop(j).valid&rob_ready&&ldq_idx(j).valid
+        ld_iss_unit.io.dis_uops(j).valid := ld_uop(j).fire&&(!commit_flush.valid)
         ld_iss_unit.io.dis_uops(j).bits  := ld_uop(j).bits
-        dispatcher.io.dis_uops(ld_iss_idx)(j).ready := ld_iss_unit.io.dis_uops(j).ready&&rob_enq_ready(j)&&ld_enq_ready(j)
-        io.lsu.dis(1).enq(j).valid := ld_uop(j).valid
+        dispatcher.io.dis_uops(ld_iss_idx)(j).ready := dis_all_ready.reduce(_&&_)
+        io.lsu.dis(1).enq(j).valid := ld_uop(j).fire&&(!commit_flush.valid)
         io.lsu.dis(1).enq(j).bits  := ld_uop(j).bits
-        rob_enq_valid(ld_iss_idx)(j) := ld_uop(j).valid&&ldq_idx(j).valid
+        rob_enq_valid(ld_iss_idx)(j) := ld_uop(j).fire&&(!commit_flush.valid)
         
     }
     ld_iss_unit.io.replay<>io.lsu.ld_replay
     ld_iss_unit.io.commit<>rob.io.commit.bits
     rob_enq_uop(ld_iss_idx) := ld_uop
+
+    for(i <- 0 until intIssueParam.dispatchWidth){
+        st_enq_ready(i) := io.lsu.dis(0).enq(i).ready&&st_iss_unit.io.dis_uops(i).ready&&rob_enq_ready(i)
+        ld_enq_ready(i) := io.lsu.dis(1).enq(i).ready&&ld_iss_unit.io.dis_uops(i).ready&&rob_enq_ready(i)
+        alu_enq_ready(i) := int_iss_unit.io.dis_uops(i).ready&&rob_enq_ready(i)
+        dis_all_ready(i) := Mux(dispatcher.io.ren_uops(i).bits.uses_ldq,ld_enq_ready(i),Mux(dispatcher.io.ren_uops(i).bits.uses_stq,st_enq_ready(i),alu_enq_ready(i)))
+    }
     // io.lsu.dis(1).enq <> dispatcher.io.dis_uops(ld_iss_idx)
     // ld_iss_unit.io.dis_uops<>ld_uop
 

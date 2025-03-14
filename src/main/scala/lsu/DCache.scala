@@ -8,6 +8,7 @@ import org.chipsalliance.cde.config._
 // import freechips.rocketchip.util.Annotated.resetVector
 import freechips.rocketchip.util.DontTouch
 import org.chipsalliance.cde.config._
+import freechips.rocketchip.tilelink.TLMessages.d
 case object DCacheKey extends Field[DCacheParams]
 
 
@@ -641,15 +642,20 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 
 ////////////////////////////////replace//////////////////////////////////
 //not the same time 
+	val rlp_valid = RegNext(rvalid)
+	dontTouch(rlp_valid) 
 	missunit.io.refill.ready	  := (!s1_wvalid)&(!s1_rvalid.reduce(_||_))
 	missunit.io.replace_req.ready := (!s1_wvalid)&(!s1_rvalid.reduce(_||_))
 	
 	missunit.io.replace_resp.valid   	:= RegNext(replaced)
 	missunit.io.replace_resp.bits.way	:= rp
 	missunit.io.replace_resp.bits.addr 	:= Cat(rtag(rp)(0),RegNext(missunit.io.replace_req.bits.idx))<<offsetWidth
-	missunit.io.replace_resp.bits.dirty	:= rmeta(rp)(0).dirty&&rvalid(rp)(0)
+	missunit.io.replace_resp.bits.dirty	:= rmeta(rp)(0).dirty&&rlp_valid(rp)(0)
 	missunit.io.replace_resp.bits.data 	:= rdata(0)(rp)
+	dontTouch(rmeta)
+	dontTouch(rvalid)
 	dontTouch(rtag)
+	//由于在miss阶段可能填充写入的数据，所以这里在refill时需要一个dirty位，将合并了写请求的mshr dirty置为高
 	for(i <- 0 until numReadport){
 		when(i.U===0.U){
 			for(j <- 0 until bankNum){

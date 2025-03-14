@@ -140,10 +140,9 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     
     val enqNextPtr = ldq_enq_ptr+numEnq
 	val deqNextPtr = ldq_deq_ptr+numDeq
-    val full = (numLDQs.U-numValid<numEnq)||
-    numValid===numLDQs.U
+    val full = (numLDQs.U-numValid<coreWidth.U)
 	val empty = (ldq_enq_ptr(ldqSz)===ldq_deq_ptr(ldqSz))&&ldq_enq_ptr(ldqSz-1,0)===ldq_deq_ptr(ldqSz-1,0)
-    
+    dontTouch(full)
     io.dis.enq.foreach{dis=>
         dis.ready := (!full)&(!io.flush)
     }

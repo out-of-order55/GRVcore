@@ -116,7 +116,8 @@ verilog:
 	@echo "---------------- GENERATE VERILOG ----------------"
 	
 	@mkdir -p $(VERILOG_FILE)
-	mill  -i -j 8 $(PRJ).runMain Elaborate  --split-verilog --target-dir $(VERILOG_FILE)
+	mill  -i -j 8 $(PRJ).runMain Elaborate  --split-verilog --target-dir $(VERILOG_FILE)/rtl
+	
 # @echo $(GenerateV) $(WORK_DIR)/vsrc
 # @if [ -n "$(GenerateV)" ]; then \
 # 	echo "Copying $(GenerateV) to $(WORK_DIR)/vsrc"; \
@@ -131,7 +132,7 @@ debug :
 	@mkdir -p $(VERILOG_FILE)/rtl &&mkdir -p $(VERILOG_FILE)/vcd
 	@exec > >(tee $(VERILOG_FILE)/debug.log) 2>&1
 	@cp $(IMG) $(WORK_DIR)/image
-	@sh ./wave.sh $(BASE_IMG) 2>&1 | tee $(VERILOG_FILE)/debug.log || exit 1
+	@sh ./wave.sh $(BASE_IMG) 2>&1 | tee $(VERILOG_FILE)/debug.log 
 
 	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/vcd/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 # @rm  -r $(VERILOG_FILE)
@@ -150,6 +151,7 @@ run:sim
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
+	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/obj_dir/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 server:sim 
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
@@ -159,7 +161,8 @@ server:sim
 ###############################VCS############################
 VCS_CSRC ?=	 $(WORK_DIR)/src/test/vcs/top.c
 VCS_VSRC ?=  $(WORK_DIR)/src/test/vcs/tb_top.v $(GenerateV)  $(shell find $(abspath $(WORK_DIR)/src/test/unit_test) -name "*.v"  -or -name "*.sv")
-
+wave:
+	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/build/vcd/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 vcs   :verilog
 	@echo "--------------------- VCS -------------------"
 # echo $(VCS_VSRC)

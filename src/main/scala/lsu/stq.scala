@@ -56,6 +56,8 @@ class STQBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
     val commit        = Input(new CommitMsg)
     val flush         = Input(Bool())
 }
+//stq flush 刷新不及时，导致有些并未刷新
+//送入stq，首先得获得rob_idx，也就是rob必须得先fire
 class STQ(implicit p: Parameters) extends GRVModule with HasDCacheParameters
 with freechips.rocketchip.rocket.constants.MemoryOpConstants  
 {
@@ -106,22 +108,17 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     
     val enqNextPtr = stq_enq_ptr+numEnq
 	// val deqNextPtr = stq_deq_ptr+numDeq.asUInt
-    val full = (stq_enq_ptr(stqSz)=/=stq_deq_ptr(stqSz)&&(numEnq+stq_enq_ptr)(stqSz-1,0)>stq_deq_ptr(stqSz-1,0))||
-    numValid===numSTQs.U
+    val full = (numSTQs.U-numValid<coreWidth.U)
 	val empty = (stq_enq_ptr(stqSz)===stq_deq_ptr(stqSz))&&stq_enq_ptr(stqSz-1,0)===stq_deq_ptr(stqSz-1,0)
     
     io.dis.enq.foreach{dis=>
         dis.ready := (!full)&(stq_state=/=s_repair)
     }
-    when(flush){
-        stq_enq_ptr := 0.U
-    }
-    .elsewhen(numEnq.orR){
-        stq_enq_ptr := stq_enq_ptr + numEnq
-    }
+
 ////////////////////////////enq logic   ///////////////////////////// 
     val enq_idxs = VecInit.tabulate(coreWidth)(i => PopCount(io.dis.enq.map{i=>i.fire&&i.bits.mem_cmd===M_XWR}.take(i)))
     val enq_offset = VecInit(enq_idxs.map(_+stq_enq_ptr(stqSz-1,0)))
+    val do_enq = WireInit(VecInit.tabulate(coreWidth)(i => io.dis.enq(i).fire&&io.dis.enq(i).bits.mem_cmd===M_XWR&&(!full)&&(!io.flush)))
     dontTouch(enq_idxs)
     dontTouch(enq_offset)
     when(flush){
@@ -130,15 +127,21 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
         }
     }
     for(i <- 0 until coreWidth){
-        val do_enq = io.dis.enq(i).fire&&io.dis.enq(i).bits.mem_cmd===M_XWR&&(!full)
+        // val do_enq = io.dis.enq(i).fire&&io.dis.enq(i).bits.mem_cmd===M_XWR&&(!full)
         for(j <- 0 until numSTQs){
-            when(do_enq&&enq_offset(i)===j.U){
+            when(do_enq(i)&&enq_offset(i)===j.U){
                 stq(j).flag.allocated := true.B
                 stq(j).uop := io.dis.enq(i).bits
             }
         }
         io.dis.enq_idx(i).bits := enq_offset(i)
-        io.dis.enq_idx(i).valid:= do_enq
+        io.dis.enq_idx(i).valid:= do_enq(i)
+    }
+    when(flush){
+        stq_enq_ptr := 0.U
+    }
+    .elsewhen(do_enq.reduce(_||_)){
+        stq_enq_ptr := stq_enq_ptr + numEnq
     }
 ////////////////////////////data addr in ///////////////////////////// 
     val s0_addr = io.pipe.s0_addr
@@ -172,8 +175,11 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     //这里有问题，我们要找的是最近一个写入该地址的stq表项，也就是满足条件中，最年轻的一个
     for(i <- 0 until numReadport){
         val (idx,vld) = findOldest(stq_rob_idx,forward_sels(i),log2Ceil(ROBEntry+1))
-        val rob_maps  = stq.map{i=>i.uop.rob_idx===idx&&i.flag.allocated&&i.flag.addrvalid&&i.flag.datavalid}
-        assert(PopCount(rob_maps)<=1.U)
+        val rob_maps  = WireInit(VecInit(stq.map{i=>i.uop.rob_idx===idx&&i.flag.allocated&&i.flag.addrvalid&&i.flag.datavalid}))
+        // val debug_rob_maps = RegNext(RegNext((rob_maps)))
+        dontTouch(rob_maps)
+        // dontTouch(debug_rob_maps)
+        // assert((PopCount(rob_maps)<=1.U),"forward data error %d",PopCount(rob_maps))
         forward_idxs(i) := PriorityEncoder(rob_maps)
         forward_vld(i)  := vld
     }

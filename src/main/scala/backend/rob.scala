@@ -127,7 +127,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
                         (commit_exc_msg.valid)&&(br_update.valid)&&(!br_info.valid)&&exc_older_than_br_r&&exc_older_than_exc_r||
                         (commit_exc_msg.valid)&&(br_update.valid)&&(br_info.valid&&exc_older_than_br_i&&exc_older_than_exc_r&&exc_older_than_br_r)
                         )
-    
+    dontTouch(is_exc_older)
     exc_msg.valid           := io.lsu_exc.valid&&is_exc_older
     exc_msg.bits.ftq_idx    := io.lsu_exc.bits.uops.ftq_idx
     exc_msg.bits.rob_idx    := io.lsu_exc.bits.uops.rob_idx
@@ -135,6 +135,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     exc_msg.bits.cause      := 0.U
     exc_msg.bits.epc        := 0.U
     exc_msg.bits.flush_typ  := FLUSH_REFETCH
+    
     /* 
     可以提交的情况：
     1.无异常，此时只要finfish的个数等于vld的个数，就说明可以提交
@@ -151,7 +152,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     full := (rob_enq_val===rob_deq_val)&&(rob_enq_mask=/=rob_deq_mask)
     dontTouch(full)
     io.enq.uops.foreach{i=>
-        i.ready := (!full)&&(rob_state===s_normal)&&(PopCount(io.enq.uops.map(_.valid))===coreWidth.U)
+        i.ready := (!full)&&(rob_state===s_normal)
         } 
     io.commit:= DontCare
     for(i<- 0 until coreWidth){
@@ -167,7 +168,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     val br_older_than_exc_r = isOlder(br_info.bits.uop.rob_idx,commit_exc_msg.bits.rob_idx,log2Ceil(ROBEntry+1)) 
     val br_older_than_exc_i = isOlder(br_info.bits.uop.rob_idx,io.lsu_exc.bits.uops.rob_idx,log2Ceil(ROBEntry+1))
     val br_older_than_br_r  = isOlder(br_info.bits.uop.rob_idx,br_update.bits.uop.rob_idx,log2Ceil(ROBEntry+1))
-    val is_flush_older = (br_info.valid)&&(
+    val is_flush_older = (br_info.valid&&br_info.bits.cfi_mispredicted)&&(
                         (!commit_exc_msg.valid)&&(!br_update.valid)&&(!io.lsu_exc.valid)||
                         (!commit_exc_msg.valid)&&(!br_update.valid)&&(io.lsu_exc.valid&&br_older_than_exc_i)||
                         (!commit_exc_msg.valid)&&(br_update.valid)&&(!io.lsu_exc.valid)&&br_older_than_br_r||
@@ -178,9 +179,9 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
                         (commit_exc_msg.valid)&&(br_update.valid)&&(io.lsu_exc.valid&&br_older_than_exc_i&&br_older_than_exc_r&&br_older_than_br_r)
                         )
 
-    flush := br_info.bits.cfi_mispredicted&&br_info.valid&&is_flush_older
+    flush := is_flush_older
 
-
+    assert(!(is_exc_older&&is_flush_older),"multi trap older")
     dontTouch(do_enq)
     dontTouch(rob_deq_val)
     dontTouch(is_flush_older)
@@ -246,9 +247,9 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
         }
     }
 
-    when(is_exc_oldest){
+    when(is_exc_oldest||is_flush_older){
         commit_exc_msg.valid := false.B
-    }.elsewhen(exc_msg.valid){
+    }.elsewhen(is_exc_older){
         commit_exc_msg := exc_msg
     }
     //指针更新逻辑

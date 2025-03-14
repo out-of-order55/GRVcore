@@ -54,15 +54,15 @@ class ComplexDispatcher(implicit p: Parameters) extends GRVModule{
         for(j<- 0 until coreWidth){
             ren(j).valid:=io.ren_uops(j).valid&iq_type(j)
         }
-        //n入k出
+        //n入k出,只有后端全部准备好，才可以发出
         val compactor = Module(new Compactor(coreWidth,issueParam.dispatchWidth,new MicroOp))
         compactor.io.in<>ren
         dis<>compactor.io.out
-        ren_readys(i) := (ren zip iq_type).map{ case(a,b)=> a.ready &&(b)}
+        ren_readys(i) := (ren).map{ en=> en.ready}
     }
     dontTouch(ren_readys)
-    
-    Transpose(ren_readys).map(r=> r.reduce(_||_)) zip io.ren_uops map{case(r,i)=>
+    //必须得后续组件全部准备好
+    Transpose(ren_readys).map(r=> r.reduce(_&&_)) zip io.ren_uops map{case(r,i)=>
         i.ready :=  r
     }
 }
