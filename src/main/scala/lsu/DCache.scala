@@ -61,7 +61,7 @@ trait HasDCacheParameters extends HasGRVParameters{
 		"b001".U -> Cat(Fill(XLEN-16,0.U),rdata(15, 0)),
 		"b110".U -> rdata(31, 0),
 		"b100".U -> Cat(Fill(XLEN-8,rdata(7)),rdata(7, 0)),
-		"b101".U -> Cat(Fill(XLEN-16,rdata(7)),rdata(15, 0))	 
+		"b101".U -> Cat(Fill(XLEN-16,rdata(15)),rdata(15, 0))	 
 
 		)
 		MuxLookup(select,"hbadc0de".U)(DataLookupTable)

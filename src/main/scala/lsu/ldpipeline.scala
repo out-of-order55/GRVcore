@@ -192,6 +192,8 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
         val wb_data = Cat(splitData(i).map(_.asUInt).reverse)>>(8.U*wb_offset)
         val wb_sels = Cat(s2_uop(i).mem_signed.asUInt,s2_uop(i).mem_size)
 
+        dontTouch(wb_data)
+        dontTouch(wb_sels)
         finalMsg(i).uop     := s2_uop(i)
         finalMsg(i).wb_data := newRdataHelper(wb_sels,wb_data)
     }
