@@ -235,8 +235,8 @@ with HasFrontendParameters with GRVOpConstants with DontTouch{
 
 //s3目前无分支预测，仅仅传送分支预测信息
     val s3_bp_resp =  WireInit(s3_bp_info.io.deq.bits.bp_resp)
-    val s3_taken_o   =  s3_bp_resp.preds.map{resp=>
-        resp.taken&resp.predicted_pc.valid
+    val s3_taken_o   =  s3_bp_resp.preds.zipWithIndex.map{case(resp,idx)=>
+        resp.taken&resp.predicted_pc.valid&&s3_resp.mask(idx)===1.U
     }
     val s3_taken_idx = PriorityEncoder(s3_taken_o)
 //////////////////////s4///////////////////////

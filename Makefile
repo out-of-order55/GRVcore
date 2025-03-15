@@ -140,7 +140,7 @@ test:
 	@echo "-------------------- UNIT TEST----------------"
 	@echo $(GenerateV)
 
-sim: 
+sim: verilog
 	@echo "----------------- VERILATE ----------------"
 	$(VERILATOR) $(VERILATOR_FLAGS) --top-module  $(TOP_NAME) \
 											$(VERILATOR_INPUT)
@@ -151,7 +151,7 @@ run:sim
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
 	$(BINARY) $(ARGS) $(IMG) +trace
-# @gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/obj_dir/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
+	@gtkwave -r $(WORK_DIR)/config/.gtkwaverc $(WORK_DIR)/obj_dir/Vtop.vcd  -A $(WORK_DIR)/build/myconfig.gtkw
 server:sim 
 	@echo $(ARGS)
 	@echo "--------------------- RUN -------------------"
