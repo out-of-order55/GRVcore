@@ -138,7 +138,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     dontTouch(s0_raddr)
 ///////////////////////////to LDQ///////////////////////////////////
     for(i <- 0 until numReadport){
-        ldq.io.pipe.s0_addr(i)      := OffsetAlign(s0_raddr(i))
+        ldq.io.pipe.s0_addr(i)      := (s0_raddr(i))
         ldq.io.pipe.s0_uop(i).bits  := io.req(i).bits.uop
         ldq.io.pipe.s0_uop(i).valid := io.req(i).valid
     }

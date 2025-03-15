@@ -223,7 +223,7 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val checkSels = VecInit(ldq.map{i=>
             
 
-            i.addr===io.check_unorder.bits.check_addr&&io.check_unorder.valid&&i.flag.wb_valid&&
+            OffsetAlign(i.addr)===io.check_unorder.bits.check_addr&&io.check_unorder.valid&&i.flag.wb_valid&&
                         isOlder(st_rob_idx,i.uop.rob_idx,log2Ceil(ROBEntry+1))
         }) 
     val unorder_idx = PriorityEncoder(checkSels)
