@@ -14,7 +14,7 @@ class Update1 (Open:Boolean)(implicit p:Parameters)extends GRVModule with HasFro
         val f3_valid     = Input(Bool())
         val f3_pred_pc   = Input(UInt(32.W))
         val f3_meta      = Input(UInt(bpdMaxMetaLength.W))
-        val f3_ftq_idx   = Input(UInt(log2Ceil(ftqentries).W))
+        val f3_ftq_idx   = Input(UInt(log2Ceil(ftqentries+1).W))
 
         val get_ftq_pc   = Flipped(new GetPCFromFtqIO())
 

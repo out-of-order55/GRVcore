@@ -33,7 +33,7 @@ class FetchBundle(implicit p: Parameters) extends GRVBundle with HasFrontendPara
     val ghist         = UInt(globalHistoryLength.W)
     val bpd_meta      = UInt(bpdMaxMetaLength.W)
 
-    val ftq_idx       = UInt(log2Ceil(ftqentries).W)
+    val ftq_idx       = UInt(log2Ceil(ftqentries+1).W)
     val bpSrc    = UInt(2.W)
 }
 

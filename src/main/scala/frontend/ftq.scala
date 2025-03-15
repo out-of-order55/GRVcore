@@ -58,7 +58,7 @@ class BrUpdateInfo(implicit p: Parameters) extends  GRVBundle with HasFrontendPa
 }
 class GetPCFromFtqIO(implicit p: Parameters) extends GRVBundle
 {
-    val ftq_idx   = Input(UInt(log2Ceil(ftqentries).W))
+    val ftq_idx   = Input(UInt(log2Ceil(ftqentries+1).W))
 
     val entry     = Output(new FTQBundle)
 
@@ -74,10 +74,10 @@ class FetchTargetQueue(implicit p: Parameters) extends GRVModule with HasFronten
     val io = IO(new Bundle{
         //
         val enq = Flipped(Decoupled(new FetchBundle()))
-        val enq_idx = Output(UInt(log2Ceil(ftqentries).W))
+        val enq_idx = Output(UInt(log2Ceil(ftqentries+1).W))
 
         //commit 阶段
-        val deq = Flipped(Valid(UInt(log2Ceil(ftqentries).W)))
+        val deq = Flipped(Valid(UInt(log2Ceil(ftqentries+1).W)))
 
         // val commit = Input(new CommitMsg)
         //分支指令执行阶段

@@ -22,7 +22,7 @@ class CommitMsg(implicit p: Parameters) extends GRVBundle{
  */
 class CommitExcMsg(implicit p: Parameters) extends GRVBundle{
 
-    val ftq_idx    = UInt(log2Ceil(ftqentries).W)
+    val ftq_idx    = UInt(log2Ceil(ftqentries+1).W)
     val rob_idx    = UInt(log2Ceil(ROBEntry+1).W)
     val pc_lob     = UInt(log2Ceil(ICacheParam.blockBytes).W)
     val cause      = UInt(32.W)
