@@ -173,7 +173,7 @@ class ReplayIssueEntry(val numWakeupPorts: Int,val replayPort:Int,val HasReplay:
                             (!entry.flag.allocated)
                         }
                         else{
-                            ((entry.flag.allocated&&io.grant)||(!entry.flag.allocated))
+                            ((!entry.flag.allocated))
                         }
     if(HasReplay){
         val can_commit = (io.commit.valid zip io.commit.commit_uops).map{case(vld,uop)=>
@@ -283,6 +283,7 @@ issue 模块分三个设计：
 
 目前先完成最简单的1
  */
+//目前算法太烂，导致前面的指令无法及时出去
 class BaseIssueUnit(
 val numWakeupPorts: Int,
 val issueWidth:Int,

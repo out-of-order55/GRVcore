@@ -39,7 +39,23 @@ class SRAMHelper[T <: Data]( depth: Int,dataType:T)(implicit p: Parameters) exte
     }
 
 }
+class DCacheDataSRAMHelper(depth: Int,width:Int)(implicit p: Parameters) extends GRVModule {
 
+    val io = IO(new SRAMIO( depth, width))  
+    val mem = SyncReadMem(depth, Vec(width/8,UInt(8.W)))
+
+    
+    class SRAMIO( depth: Int, width: Int) extends Bundle {
+        val addr = Input(UInt(log2Ceil(depth).W))
+        val dataIn = Input(Vec(width/8,UInt(8.W)))
+        val mask   = Input(Vec(width/8,Bool()))
+        val dataOut = Output(UInt(width.W))
+        val enable = Input(Bool())
+        val write = Input(Bool())
+    }
+    io.dataOut := mem.readWrite(io.addr,io.dataIn,io.mask,io.enable, io.write)
+
+}
 class DualSRAMHelper[T <: Data]( depth: Int,dataType:T)(implicit p: Parameters) extends GRVModule {
 
     val mem = SyncReadMem(depth, dataType) 

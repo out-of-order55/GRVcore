@@ -729,11 +729,12 @@ with HasDCacheParameters with GRVOpConstants with DontTouch{
 			}
 			val data_wvalid = s1_wvalid&&s1_wmask(j)=/=0.U
 			val s0_ridx = Mux1H(s0_renOH,s0_rmsg.map(_.bits.index))
+			val s0_widx = s0_wmsg.bits.index
 			val data_idx = Mux(refilled,refillMsg.index,
 							Mux(replaced,replaceMsg.idx,
-							Mux(s1_wvalid,s1_wmsg.bits.index,s0_ridx)))
+							Mux(s1_wvalid,s1_wmsg.bits.index,Mux(s0_renOH.reduce(_||_),s0_ridx,s0_widx))))
 			dontTouch(s0_ridx)
-			val enable  = refilled||((s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced
+			val enable  = refilled||((s0_rvalid.reduce(_||_)&&s0_renOH.reduce(_||_)))||s1_wvalid||replaced||s0_wvalid
 			val write	= refilled&&(i.U===refillWay)||data_wvalid&&s1_whit(i)
 			val w_data 	= Mux(refilled,refillData(j),s1_final_wdata(j))
 			data(i)(j).io.enable := enable
