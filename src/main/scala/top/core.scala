@@ -472,6 +472,7 @@ class GRVCore()(implicit p: Parameters) extends GRVModule with HasFrontendParame
     rob.io.lsu_exc.bits.uops := check_unorder.uop
     rob.io.lsu_exc.valid  := check_unorder.redirect
 
+    rob.io.st_nack := io.lsu.st_nack
     if(hasDebug){
         val commit_event = Module(new DifftestWrapper)
         commit_event.io.commit <> rob.io.commit.bits

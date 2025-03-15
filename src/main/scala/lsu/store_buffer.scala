@@ -14,6 +14,7 @@ import org.chipsalliance.cde.config._
 class SBBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val dcache_write  = Flipped(new DCacheWriteIO)
     val sb_req        = Flipped(Decoupled(new STQCommit))
+    val pipe_snoop    = new STQSnoopIO//是否可以提交
     val search_req    = Flipped(new LDQSearchReq)
     val search_resp   = Vec(numReadport,(Valid(new LDQSearchResp)))
     // val commit        = Input(new CommitMsg)
@@ -48,14 +49,22 @@ class StoreBuffer(implicit p: Parameters) extends GRVModule with HasDCacheParame
     val numValid = PopCount(store_buf.map{buf=>buf.flag.valid})
     val full = RegNext(numValid+(io.sb_req.fire).asUInt===numSBs.U)
 	val empty = numValid===0.U
-    val almost_full = numValid+1.U===numSBs.U
+    // val almost_full = numSBs.U-numValid<=1.U
+    val almost_full = numSBs.U-numValid<=1.U
 ////////////////////////////enq logic   ///////////////////////////// 
     val do_enq = io.sb_req.fire
     val align_addr   = BankAlign(io.sb_req.bits.addr)
     val enq_bank         = io.sb_req.bits.addr(offsetWidth-1,bankWidth)
 
-    io.sb_req.ready := (!full)
-
+    
+    val is_snoop_merge= store_buf.map{buf=>
+        buf.addr===BankAlign(io.pipe_snoop.s2_addr)&&(buf.flag.valid)&&(!buf.flag.inflight)&&io.pipe_snoop.s2_valid
+    }
+    val is_enq_merge= store_buf.map{buf=>
+        buf.addr===BankAlign(io.sb_req.bits.addr)&&(buf.flag.valid)&&(!buf.flag.inflight)&&io.sb_req.valid
+    }
+    io.pipe_snoop.s2_nack := (full&&(!is_snoop_merge.reduce(_||_)))&&io.pipe_snoop.s2_valid
+    io.sb_req.ready := (!full)||(full&&is_enq_merge.reduce(_||_))
     val enq_merge_sels= VecInit(store_buf.map{buf=>
         buf.addr===BankAlign(io.sb_req.bits.addr)&&(buf.flag.valid)&&(!buf.flag.inflight)&&do_enq
     })//only 1

@@ -39,6 +39,7 @@ class STQPipeIO(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
     // val s2_wb_req      = Input(Vec(numReadport,Bool()))
     // val s2_miss        = Input(Vec(numReadport,Bool()))
 }
+
 class STQCommit(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
     val uop     =   new MicroOp
     val data    =   UInt(XLEN.W)
@@ -160,10 +161,11 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants
     val forward_addr = io.search_req.addr
 
 
+    //如果此时由于sb满导致某些指令无法写入，需要阻塞
     val forward_sels = VecInit((io.search_req.addr zip io.search_req.rob_idx)map{case(addr,rob_idx)=>
         VecInit(stq.map{q=>
             q.addr===addr.bits&&q.flag.allocated&&q.flag.addrvalid&&addr.valid&&q.flag.datavalid&&
-            isOlder(q.uop.rob_idx,rob_idx,log2Ceil(ROBEntry+1))
+            (isOlder(q.uop.rob_idx,rob_idx,log2Ceil(ROBEntry+1)))
         })
     })
     val stq_rob_idx = VecInit(stq.map(_.uop.rob_idx))

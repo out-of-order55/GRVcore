@@ -21,10 +21,17 @@ class STBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParameter
     val check_unorder = Valid(new CheckRAWReq)
     val refillMsg     = Input(new RefillMsg())
     val wb_resp       = Valid(new ExuResp)
+    val st_nack       = Output(Bool())
     val search_resp   = Vec(2,Vec(numReadport,(Valid(new LDQSearchResp))))//data
     val commit        = Input(new CommitMsg)
     val replay        = Output(new LSUReplay)
     val flush         = Input(Bool())
+}
+class STQSnoopIO(implicit p: Parameters) extends GRVBundle with HasDCacheParameters{
+    val s2_addr        = Input(UInt(XLEN.W))
+    val s2_valid       = Input(Bool())
+    val s2_nack        = Output(Bool())
+
 }
 class STPipeline(implicit p: Parameters) extends GRVModule with HasDCacheParameters
 with freechips.rocketchip.rocket.constants.MemoryOpConstants{
@@ -54,7 +61,13 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     val s1_waddr = RegNext(s0_waddr)
     val s1_uop   = RegNext(s0_uop)
 
+    val s1_align_wdata = RegNext(s0_align_wdata)
+    val s1_align_mask  = RegNext(s0_align_mask)
+    val s1_waddr_align = RegNext(OffsetAlign(s0_waddr))
 
+    val s2_align_wdata = RegNext(s1_align_wdata)
+    val s2_align_mask  = RegNext(s1_align_mask)
+    val s2_waddr_align = RegNext(s1_waddr_align)
     // val s2_replay= RegNext(s1_replay)
     val s2_fail  = WireInit(false.B)
     val s2_valid = RegNext(s1_valid&&(!io.flush))
@@ -95,10 +108,15 @@ with freechips.rocketchip.rocket.constants.MemoryOpConstants{
     io.wb_resp.bits.uop     := s2_uop
     io.wb_resp.bits.wb_data := DontCare
 //////////////////////////   DCache    //////////////////////////////
+    store_buffer.io.pipe_snoop.s2_valid := s2_valid&(!io.flush)
+    store_buffer.io.pipe_snoop.s2_addr  := s2_waddr
     store_buffer.io.dcache_write<>io.write
+
     store_buffer.io.refillMsg := io.refillMsg
     store_buffer.io.flush := io.flush
 //////////////////////////  STQ2SB    //////////////////////////////
     //这里是时序瓶颈，之后插入寄存器
     store_buffer.io.sb_req <> stq.io.sb_req
+    //加入st 流水线阻塞机制，如果store buffer无法接受请求，阻塞提交，s2阶段进行snoop，如果snoop失败，阻塞提交
+    io.st_nack := store_buffer.io.pipe_snoop.s2_nack
 }

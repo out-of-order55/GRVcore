@@ -33,6 +33,7 @@ class LSUBundle(implicit p: Parameters) extends GRVBundle with HasDCacheParamete
     val st_req           = Flipped(Valid(new LSUReq))
     val st_wb_resp       = Valid(new ExuResp)
     val st_replay        = Output(new LSUReplay)
+    val st_nack          = Output(Bool())
     //resp for check 
     val check_resp    = Output(new CheckRAWResp)
 
@@ -61,6 +62,7 @@ with HasDCacheParameters with GRVOpConstants{
     // st_pipeline.io.flush:= false.B
     st_pipeline.io.commit:= io.commit
     st_pipeline.io.wb_resp<> io.st_wb_resp
+    io.st_nack := st_pipeline.io.st_nack
 /////////////////////////   TO LD     ///////////////////////////////
     ld_pipeline.io.dis <>io.dis(1)
     ld_pipeline.io.req := io.ld_req

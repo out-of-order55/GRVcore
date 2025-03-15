@@ -45,7 +45,7 @@ class ROBIO(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVBundle{
 
     val lsu_exc     = Flipped(Valid(new Exception))
     val br_info     = Flipped(Valid(new BrUpdateInfo))
-
+    val st_nack     = Input(Bool())
 
     val br_update   = Valid(new BrUpdateInfo)
     val commit      = Valid(new CommitMsg)
@@ -146,7 +146,7 @@ class ROB(val numWakeupPorts:Int)(implicit p: Parameters) extends GRVModule{
     is_exc_oldest := (is_commit_flush=/=0.U)&&(((is_commit_flush)&(deq_finish_mask))===is_commit_flush)
     dontTouch(is_exc_oldest)
     dontTouch(deq_finish_mask)
-    val can_commit      = ((((deq_vld_mask)===(deq_finish_mask)))||is_exc_oldest)&&(deq_vld_mask=/=0.U)
+    val can_commit      = ((((deq_vld_mask)===(deq_finish_mask)))||is_exc_oldest)&&(deq_vld_mask=/=0.U)&&(!io.st_nack)
 
     
     full := (rob_enq_val===rob_deq_val)&&(rob_enq_mask=/=rob_deq_mask)
