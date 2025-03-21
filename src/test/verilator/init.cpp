@@ -27,7 +27,7 @@ extern void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nby
 void init_difftest(char *ref_so_file, long img_size, int port);
 char logbuf[128];
 uint8_t mem[CONFIG_MSIZE]={};
-uint8_t sram[0x10000]={};
+uint8_t sram[0x50000]={};
 static char *img_file = NULL;
 static char *log_file = NULL;
 static char *elf_file=NULL;

@@ -7,7 +7,7 @@
 #define Vaddr2Paddr(x)   (x-CONFIG_MBASE)
 #define MemAccess(x)  (Vaddr2Paddr(x)) 
 extern uint8_t mem[CONFIG_MSIZE];
-extern uint8_t sram[0x10000];
+extern uint8_t sram[0x50000];
 extern uint32_t last_inst;
 extern char logbuf[128];
 extern CPU_state cpu;
